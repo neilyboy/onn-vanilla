@@ -32,11 +32,21 @@ class MainActivity : ComponentActivity() {
     val agenda = mutableStateOf<List<CalEvent>>(emptyList())
     val news = mutableStateOf<List<Headline>>(emptyList())
     val alerts = mutableStateOf<List<Alert>>(emptyList())
+    val glance = mutableStateOf<LiveGlance?>(null)
+    val radar = mutableStateOf<String?>(null)
+
+    private suspend fun glanceLoop() {
+        while (true) {
+            if (config.value?.layout.let { it != null && it != "minimal" }) glance.value = withContext(Dispatchers.IO) { readGlance(this@MainActivity) }
+            delay(30_000L)
+        }
+    }
 
     private suspend fun refreshFeeds(c: LauncherConfig) = withContext(Dispatchers.IO) {
         agenda.value = if (c.calendars.isEmpty()) emptyList() else fetchCalendar(c.calendars)
-        news.value = if (c.newsFeeds.isEmpty()) emptyList() else fetchNews(c.newsFeeds)
+        news.value = if (c.newsFeeds.isEmpty()) emptyList() else fetchNews(c.newsFeeds, if (c.widget("news") != null) 12 else 8)
         alerts.value = if (c.alerts && c.hasWeather) fetchAlerts(c.latitude, c.longitude) else emptyList()
+        if (c.widget("weather") != null) radar.value = fetchRadarBase()
     }
 
     private suspend fun feedLoop() {
@@ -86,6 +96,7 @@ class MainActivity : ComponentActivity() {
         idle.value = false
         lastInput.longValue = System.currentTimeMillis()
         lifecycleScope.launch { delay(3_000); HomeButtonService.heal(this@MainActivity) }
+        lifecycleScope.launch { glance.value = withContext(Dispatchers.IO) { readGlance(this@MainActivity) } }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -112,6 +123,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch { configLoop() }
         lifecycleScope.launch { weatherLoop() }
         lifecycleScope.launch { delay(3_000); feedLoop() }
+        lifecycleScope.launch { glanceLoop() }
     }
 
     override fun onNewIntent(intent: Intent) {

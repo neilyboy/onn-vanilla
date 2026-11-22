@@ -154,12 +154,25 @@ class MainActivity : ComponentActivity() {
 
     val resume = mutableStateOf<List<Resume>>(emptyList())
 
-    fun playVod(url: String, title: String, subtitle: String, poster: String, key: String) {
+    fun playVod(url: String, title: String, subtitle: String, poster: String, key: String, who: String = profile.value.name) {
         startActivity(
             Intent(this, VodPlayerActivity::class.java)
                 .putExtra("url", url).putExtra("title", title).putExtra("subtitle", subtitle)
-                .putExtra("poster", poster).putExtra("key", key).putExtra("profile", profile.value.name)
+                .putExtra("poster", poster).putExtra("key", key).putExtra("profile", who)
         )
+    }
+
+    /** Refreshes the snapshot the home screen widgets read. */
+    fun writeGlance() {
+        val p = profile.value.name
+        val ch = channels.value; val g = epg.value; val f = favorites.value; val r = recents.value; val gm = games.value
+        if (ch.isEmpty()) return
+        lifecycleScope.launch(Dispatchers.IO) { Glance.write(this@MainActivity, p, ch, g, f, r, gm, Repo.favTeams) }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        writeGlance()
     }
 
     override fun onResume() {
@@ -174,6 +187,38 @@ class MainActivity : ComponentActivity() {
         l.save(this)
     }
     private var pendingTune: String? = null
+    private var pendingVod: String? = null
+    val openSeries = mutableStateOf<VodItem?>(null)
+
+    /** "m:<id>" plays a movie, "s:<id>" opens a series; both come from the home screen's "New on" widget. */
+    private fun openPendingVod() {
+        val v = pendingVod ?: return
+        val xc = config.value?.xc ?: return
+        pendingVod = null
+        val item = runCatching { org.json.JSONObject(Glance.file(this).readText()).optJSONArray("newVod") }.getOrNull()?.let { a ->
+            (0 until a.length()).mapNotNull { a.optJSONObject(it) }.firstOrNull { (if (it.optBoolean("series")) "s:" else "m:") + it.optString("id") == v }
+        }
+        val id = v.drop(2)
+        val title = item?.optString("title") ?: ""
+        val poster = item?.optString("poster") ?: ""
+        if (v.startsWith("m:")) playVod(xc.movieUrl(id, item?.optString("ext") ?: ""), title, item?.optString("year") ?: "", poster, "movie:$id")
+        else openSeries.value = VodItem(id, title, poster, "", "", item?.optString("year") ?: "", "", true, false)
+    }
+
+    private fun refreshNewVod(xc: Xc) {
+        if (Glance.newVodAge(this) < 6 * 3600_000L) return
+        lifecycleScope.launch(Dispatchers.IO) {
+            val items = org.json.JSONArray()
+            val movies = runCatching { Vod.newest(xc, false, 8) }.getOrNull()
+            val shows = runCatching { Vod.newest(xc, true, 8) }.getOrNull()
+            if (movies == null && shows == null) return@launch
+            val m = movies ?: org.json.JSONArray(); val sh = shows ?: org.json.JSONArray()
+            for (i in 0 until maxOf(m.length(), sh.length())) {
+                m.optJSONObject(i)?.let { items.put(it) }; sh.optJSONObject(i)?.let { items.put(it) }
+            }
+            Glance.writeNewVod(this@MainActivity, items)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -188,6 +233,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             while (true) {
                 config.value?.let { c -> games.value = withContext(Dispatchers.IO) { fetchGames(c.leagues) }; Repo.games = games.value }
+                writeGlance()
                 checkKickoff()
                 delay(60_000)
             }
@@ -196,7 +242,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        if (applyIntent(intent)) reload() else pendingTune?.let { tryTune() }
+        if (applyIntent(intent)) reload() else { pendingTune?.let { tryTune() }; openPendingVod() }
     }
 
     /**
@@ -214,6 +260,10 @@ class MainActivity : ComponentActivity() {
         i.getStringExtra("m3u_url")?.let { settings.m3uOverride = it; changed = true }
         i.getStringExtra("epg_url")?.let { settings.epgOverride = it; changed = true }
         pendingTune = i.getStringExtra("tune")
+        i.getStringExtra("vod_id")?.let { pendingVod = it }
+        i.getStringExtra("vod_key")?.let { key ->
+            ResumeStore.get(this, settings.profile, key)?.let { r -> playVod(r.url, r.title, r.subtitle, r.poster, r.key, settings.profile) }
+        }
         return changed
     }
 
@@ -228,6 +278,8 @@ class MainActivity : ComponentActivity() {
             }
             val c = parseLiveConfig(cfgText, settings)
             config.value = c
+            openPendingVod()
+            c.xc?.let { refreshNewVod(it) }
             Repo.leagues = c.leagues; Repo.favTeams = c.favoriteTeams; Repo.aliases = c.networkAliases
             setProfile(c.profiles.firstOrNull { it.name == settings.profile } ?: c.profiles.first())
             if (!askedProfile && c.askProfile && c.profiles.size > 1) { askedProfile = true; showPicker.value = true }
@@ -264,6 +316,7 @@ class MainActivity : ComponentActivity() {
             if (Repo.epg.isEmpty() || Repo.epgAgeMs(this@MainActivity) > 2 * 3_600_000L || (list != null && list.size != cached.size)) {
                 withContext(Dispatchers.IO) { Repo.loadEpg(this@MainActivity, epgUrl, chans) }
                 epg.value = Repo.epg
+                writeGlance()
                 mark("guide ${Repo.epg.size}")
             }
             if (!resumed && pendingTune == null && settings.resumeLast) {

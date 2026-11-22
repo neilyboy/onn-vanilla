@@ -8,7 +8,9 @@ import java.time.LocalDate
 
 data class DayForecast(val date: LocalDate, val code: Int, val high: Int, val low: Int)
 
-data class Weather(val tempNow: Int, val codeNow: Int, val isDay: Boolean, val days: List<DayForecast>)
+data class HourForecast(val time: java.time.LocalDateTime, val code: Int, val temp: Int, val rain: Int)
+
+data class Weather(val tempNow: Int, val codeNow: Int, val isDay: Boolean, val days: List<DayForecast>, val hours: List<HourForecast> = emptyList())
 
 class WeatherRepository(context: Context) {
     private val cacheFile = File(context.filesDir, "weather.json")
@@ -20,6 +22,7 @@ class WeatherRepository(context: Context) {
         val url = "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon" +
             "&current=temperature_2m,weather_code,is_day" +
             "&daily=weather_code,temperature_2m_max,temperature_2m_min" +
+            "&hourly=temperature_2m,weather_code,precipitation_probability&forecast_hours=13" +
             "&temperature_unit=$unit&timezone=auto&forecast_days=7"
         val text = httpGet(url)
         val w = parse(text)
@@ -43,11 +46,18 @@ class WeatherRepository(context: Context) {
                 Math.round(mins.optDouble(it)).toInt(),
             )
         }
+        val hours = root.optJSONObject("hourly")?.let { h ->
+            val t = h.getJSONArray("time"); val tc = h.optJSONArray("temperature_2m"); val wc = h.optJSONArray("weather_code"); val pp = h.optJSONArray("precipitation_probability")
+            (0 until t.length()).map {
+                HourForecast(java.time.LocalDateTime.parse(t.getString(it)), wc?.optInt(it) ?: 0, Math.round(tc?.optDouble(it) ?: 0.0).toInt(), pp?.optInt(it) ?: 0)
+            }
+        } ?: emptyList()
         return Weather(
             Math.round(cur.getDouble("temperature_2m")).toInt(),
             cur.optInt("weather_code"),
             cur.optInt("is_day", 1) == 1,
             days,
+            hours,
         )
     }
 }

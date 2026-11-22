@@ -17,6 +17,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -120,12 +121,18 @@ fun LauncherScreen(
                 Spacer(Modifier.weight(1f))
                 Column(horizontalAlignment = Alignment.End) {
                     ClockWeather(cfg, theme, weather, compact = idle)
-                    if (!idle) Agenda(activity.agenda.value, theme)
+                    if (!idle && cfg.widget("calendar") == null) Agenda(activity.agenda.value, theme)
                 }
             }
             activity.alerts.value.firstOrNull()?.let { AlertBanner(it, activity.alerts.value.size, theme) }
-            Spacer(Modifier.weight(1f))
-            if (!idle) NewsStrip(activity.news.value, theme)
+            if (cfg.layout == "minimal" || cfg.widgets.isEmpty() || idle) Spacer(Modifier.weight(1f))
+            else Row(Modifier.weight(1f).fillMaxWidth().padding(vertical = 16.dp)) {
+                val side = { pos: String -> cfg.widgets.any { it.pos == pos } }
+                if (side("left")) { WidgetColumn(activity, cfg, theme, "left", Modifier.width(380.dp).fillMaxHeight()); Spacer(Modifier.width(24.dp)) }
+                WidgetColumn(activity, cfg, theme, "center", Modifier.weight(1f).fillMaxHeight().verticalScroll(androidx.compose.foundation.rememberScrollState()))
+                if (side("right")) { Spacer(Modifier.width(24.dp)); WidgetColumn(activity, cfg, theme, "right", Modifier.width(380.dp).fillMaxHeight()) }
+            }
+            if (!idle && cfg.widget("news") == null) NewsStrip(activity.news.value, theme)
             if (cfg.greeting.isNotBlank() && !idle) {
                 Text(cfg.greeting, color = theme.subText, fontSize = 16.sp, modifier = Modifier.padding(bottom = 12.dp, start = 4.dp))
             }
@@ -263,7 +270,7 @@ private fun ClockWeather(cfg: LauncherConfig, theme: VanillaTheme, weather: Weat
     }
 }
 
-private fun weatherIcon(code: Int, day: Boolean): ImageVector = when (code) {
+internal fun weatherIcon(code: Int, day: Boolean): ImageVector = when (code) {
     0, 1 -> if (day) Icons.Outlined.WbSunny else Icons.Outlined.NightsStay
     2 -> Icons.Outlined.WbCloudy
     3 -> Icons.Outlined.Cloud
@@ -286,7 +293,7 @@ private fun builtinIcon(name: String): ImageVector? = when (name) {
 }
 
 @Composable
-private fun tileColors(theme: VanillaTheme) = ClickableSurfaceDefaults.colors(
+internal fun tileColors(theme: VanillaTheme) = ClickableSurfaceDefaults.colors(
     containerColor = theme.tile,
     focusedContainerColor = theme.tileFocused,
     pressedContainerColor = theme.tileFocused,

@@ -11,7 +11,7 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 
 data class CalEvent(val start: ZonedDateTime, val allDay: Boolean, val title: String)
-data class Headline(val source: String, val title: String)
+data class Headline(val source: String, val title: String, val image: String = "", val at: Long = 0)
 data class Alert(val event: String, val headline: String, val severity: String)
 
 /** Upcoming events from iCal (.ics) feeds, including simple daily/weekly/monthly/yearly repeats. */
@@ -103,27 +103,55 @@ fun fetchNews(urls: List<String>, perFeed: Int = 8): List<Headline> {
     return (0 until perFeed).flatMap { i -> lists.mapNotNull { it.getOrNull(i) } }
 }
 
+private val IMG = Regex("""<img[^>]+src=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+
 private fun parseFeed(xml: String): List<Headline> {
     val p = Xml.newPullParser()
     p.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
     p.setInput(xml.reader())
     var source = ""
-    var depthItem = false
+    var inItem = false
+    var title = ""; var image = ""; var at = 0L
     val out = ArrayList<Headline>()
-    while (p.next() != XmlPullParser.END_DOCUMENT) {
-        if (p.eventType == XmlPullParser.START_TAG) {
-            when (p.name) {
-                "item", "entry" -> depthItem = true
-                "title" -> {
-                    val t = runCatching { p.nextText() }.getOrDefault("").trim()
-                    if (depthItem) { if (t.isNotBlank()) out += Headline(source, t) } else if (source.isBlank()) source = t
+    // A malformed tail (bad entity etc.) keeps whatever parsed before it.
+    runCatching {
+        while (p.next() != XmlPullParser.END_DOCUMENT) {
+            if (p.eventType == XmlPullParser.START_TAG) {
+                val name = p.name
+                when {
+                    name == "item" || name == "entry" -> { inItem = true; title = ""; image = ""; at = 0L }
+                    name == "title" -> {
+                        val t = runCatching { p.nextText() }.getOrDefault("").trim()
+                        if (inItem) title = t else if (source.isBlank()) source = t
+                    }
+                    !inItem -> Unit
+                    name == "media:content" || name == "media:thumbnail" || name == "enclosure" -> {
+                        val url = p.getAttributeValue(null, "url") ?: ""
+                        val type = p.getAttributeValue(null, "type") ?: p.getAttributeValue(null, "medium") ?: "image"
+                        if (image.isBlank() && url.isNotBlank() && type.startsWith("image")) image = url
+                    }
+                    name == "description" || name == "content:encoded" || name == "content" || name == "summary" -> {
+                        val t = runCatching { p.nextText() }.getOrDefault("")
+                        if (image.isBlank()) IMG.find(t)?.let { image = it.groupValues[1].replace("&amp;", "&") }
+                    }
+                    name == "pubDate" || name == "published" || name == "updated" -> {
+                        val t = runCatching { p.nextText() }.getOrDefault("").trim()
+                        if (at == 0L) at = parseFeedDate(t)
+                    }
                 }
+            } else if (p.eventType == XmlPullParser.END_TAG && (p.name == "item" || p.name == "entry")) {
+                if (title.isNotBlank()) out += Headline(source, title, image, at)
+                inItem = false
             }
-        } else if (p.eventType == XmlPullParser.END_TAG && (p.name == "item" || p.name == "entry")) depthItem = false
+        }
     }
     val short = source.substringBefore(" - ").substringBefore(" | ").substringBefore(":").trim().take(24)
     return out.map { it.copy(source = short) }
 }
+
+private fun parseFeedDate(s: String): Long = runCatching {
+    java.time.ZonedDateTime.parse(s, java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli()
+}.recoverCatching { java.time.OffsetDateTime.parse(s).toInstant().toEpochMilli() }.getOrDefault(0L)
 
 /** Active US National Weather Service alerts for a point (empty outside the US). */
 fun fetchAlerts(lat: Double, lon: Double): List<Alert> = runCatching {
@@ -133,3 +161,10 @@ fun fetchAlerts(lat: Double, lon: Double): List<Alert> = runCatching {
         Alert(it.optString("event"), it.optString("headline"), it.optString("severity"))
     }.sortedBy { listOf("Extreme", "Severe", "Moderate", "Minor").indexOf(it.severity).let { i -> if (i < 0) 9 else i } }
 }.getOrDefault(emptyList())
+
+/** Latest RainViewer radar frame, e.g. "https://tilecache.rainviewer.com/v2/radar/1700000000". */
+fun fetchRadarBase(): String? = runCatching {
+    val r = JSONObject(httpGet("https://api.rainviewer.com/public/weather-maps.json", 15000))
+    val past = r.getJSONObject("radar").getJSONArray("past")
+    r.getString("host") + past.getJSONObject(past.length() - 1).getString("path")
+}.getOrNull()

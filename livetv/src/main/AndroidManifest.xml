@@ -43,5 +43,9 @@
             android:exported="false"
             android:screenOrientation="landscape"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenLayout|screenSize|uiMode" />
+        <provider
+            android:name=".GlanceProvider"
+            android:authorities="tv.vanilla.live.glance"
+            android:exported="true" />
     </application>
 </manifest>

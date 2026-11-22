@@ -38,7 +38,11 @@ data class LauncherConfig(
     val calendars: List<String> = emptyList(),
     val newsFeeds: List<String> = emptyList(),
     val alerts: Boolean = true,
+    val layout: String = "minimal",
+    val widgets: List<WidgetSpec> = emptyList(),
+    val countdowns: List<String> = emptyList(),
 ) {
+    fun widget(id: String) = if (layout == "minimal") null else widgets.firstOrNull { it.id == id }
     val hasWeather get() = showWeather && !latitude.isNaN() && !longitude.isNaN()
 
     companion object {
@@ -60,6 +64,11 @@ data class LauncherConfig(
                 calendars = strings(root.optJSONObject("feeds")?.optJSONArray("calendars")),
                 newsFeeds = strings(root.optJSONObject("feeds")?.optJSONArray("news")),
                 alerts = root.optJSONObject("feeds")?.optBoolean("alerts", true) ?: true,
+                layout = root.optJSONObject("widgets")?.optString("layout", "minimal") ?: "minimal",
+                widgets = root.optJSONObject("widgets")?.optJSONArray("items")?.let { a ->
+                    (0 until a.length()).mapNotNull { a.optJSONObject(it) }.map { WidgetSpec(it.optString("id"), it.optString("pos", "center")) }
+                } ?: emptyList(),
+                countdowns = strings(root.optJSONObject("widgets")?.optJSONArray("countdowns")),
                 scale = ui.optDouble("scale", 1.0).toFloat().coerceIn(0.6f, 1.6f),
                 kenBurns = ui.optBoolean("ken_burns", true),
                 showWeather = ui.optBoolean("show_weather", true),
@@ -160,3 +169,6 @@ fun httpGet(url: String, timeoutMs: Int = 8000): String {
         conn.disconnect()
     }
 }
+
+/** A home screen widget and where it sits: left, center or right. */
+data class WidgetSpec(val id: String, val pos: String)

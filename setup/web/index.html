@@ -109,6 +109,25 @@
         </select>
       </label>
     </div>
+    <h3>Widgets</h3>
+    <p class="muted">Fill the empty space on the home screen. Pick a layout to start from, then switch widgets on or off and choose where each one sits. Live TV widgets fill in after Live TV has been opened once.</p>
+    <div class="grid">
+      <label>Layout
+        <select data-key="layout" id="layout">
+          <option value="minimal">Minimal — clock, weather and apps only</option><option value="glance">Glance — rows of cards above your apps</option><option value="mirror">Mirror — info panels on the sides, like Magic Mirror</option>
+        </select>
+      </label>
+        <label>Scores — your teams' live and upcoming games<select data-key="wScores"><option value="">Off</option><option value="left">Left</option><option value="center">Middle</option><option value="right">Right</option></select></label>
+        <label>On now — what's playing on your favorite and recent channels<select data-key="wOnnow"><option value="">Off</option><option value="left">Left</option><option value="center">Middle</option><option value="right">Right</option></select></label>
+        <label>Continue watching — movies and episodes you started<select data-key="wResume"><option value="">Off</option><option value="left">Left</option><option value="center">Middle</option><option value="right">Right</option></select></label>
+        <label>New on Movies &amp; Series — newest titles from your providers<select data-key="wNewvod"><option value="">Off</option><option value="left">Left</option><option value="center">Middle</option><option value="right">Right</option></select></label>
+        <label>This week — calendar events and countdowns<select data-key="wCalendar"><option value="">Off</option><option value="left">Left</option><option value="center">Middle</option><option value="right">Right</option></select></label>
+        <label>Headlines — news cards with photos<select data-key="wNews"><option value="">Off</option><option value="left">Left</option><option value="center">Middle</option><option value="right">Right</option></select></label>
+        <label>Weather — next 12 hours and live radar<select data-key="wWeather"><option value="">Off</option><option value="left">Left</option><option value="center">Middle</option><option value="right">Right</option></select></label>
+      <label>Countdowns <span class="muted">(optional, one per line: Name|MM-DD for yearly, Name|YYYY-MM-DD for once. US holidays are built in.)</span>
+        <textarea data-key="countdowns" rows="2" placeholder="Mom's birthday|03-14&#10;Beach trip|2027-06-20"></textarea>
+      </label>
+    </div>
     <div class="nextbar"><button class="next" data-go="sports">Next: Sports →</button></div>
   </section>
 

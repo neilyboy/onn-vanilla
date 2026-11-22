@@ -50,6 +50,45 @@ object Vod {
         }
     }.filter { adult || !it.adult }
 
+    /** The [n] most recently added movies or series (non-adult), streamed so the full catalog never sits in memory. */
+    fun newest(xc: Xc, series: Boolean, n: Int = 12): JSONArray {
+        val adultCats = runCatching { cats(xc, series, true).filter { isAdultGroup(it.name) }.map { it.id }.toSet() }.getOrDefault(emptySet())
+        val top = java.util.PriorityQueue<Pair<Long, JSONObject>>(compareBy { it.first })
+        val conn = java.net.URL(xc.api(if (series) "get_series" else "get_vod_streams")).openConnection() as java.net.HttpURLConnection
+        conn.connectTimeout = 15000; conn.readTimeout = 120000
+        conn.inputStream.use { ins ->
+            val r = android.util.JsonReader(ins.reader())
+            r.beginArray()
+            while (r.hasNext()) {
+                var id = ""; var name = ""; var poster = ""; var ext = ""; var year = ""; var added = 0L; var cat = ""; var adult = false
+                r.beginObject()
+                while (r.hasNext()) {
+                    val k = r.nextName()
+                    if (r.peek() == android.util.JsonToken.NULL) { r.skipValue(); continue }
+                    if (r.peek() == android.util.JsonToken.BEGIN_ARRAY || r.peek() == android.util.JsonToken.BEGIN_OBJECT) { r.skipValue(); continue }
+                    val v = r.nextString()
+                    when (k) {
+                        "stream_id", "series_id" -> id = v
+                        "name" -> name = v
+                        "stream_icon", "cover" -> poster = v
+                        "container_extension" -> ext = v
+                        "year" -> year = v
+                        "added", "last_modified" -> added = maxOf(added, v.toLongOrNull() ?: 0L)
+                        "category_id" -> cat = v
+                        "is_adult" -> adult = v == "1"
+                    }
+                }
+                r.endObject()
+                if (adult || cat in adultCats || isAdultGroup(name) || poster.isBlank() || id.isBlank()) continue
+                top.add(added to JSONObject().put("id", id).put("title", name).put("poster", poster).put("ext", ext).put("year", year).put("series", series))
+                if (top.size > n) top.poll()
+            }
+        }
+        val out = JSONArray()
+        top.sortedByDescending { it.first }.forEach { out.put(it.second) }
+        return out
+    }
+
     fun episodes(xc: Xc, seriesId: String): List<Episode> = cached("e$seriesId") {
         val root = JSONObject(httpGet(xc.api("get_series_info", "&series_id=$seriesId"), 30000))
         val eps = root.opt("episodes")

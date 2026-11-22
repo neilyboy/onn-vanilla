@@ -40,6 +40,13 @@ function go(step) {
   if (step === "box") checkAdb();
 }
 
+// Starting points for the layout picker; each widget can still be changed afterwards.
+const WIDGET_PRESETS = {
+  minimal: {},
+  glance: { wScores: "center", wOnnow: "center", wResume: "center", wNewvod: "center" },
+  mirror: { wCalendar: "left", wNews: "left", wWeather: "right", wScores: "center", wOnnow: "center", wResume: "center", wNewvod: "", },
+};
+
 function bindFields() {
   $$("[data-key]").forEach(el => {
     const k = el.dataset.key;
@@ -52,6 +59,15 @@ function bindFields() {
   });
   if (/^#[0-9a-f]{6}$/i.test(S.accent || "")) $("#accent-pick").value = S.accent;
   $("#accent-pick").addEventListener("input", e => { S.accent = e.target.value; $("#accent").value = S.accent; save(); });
+  $("#layout").addEventListener("change", e => {
+    const preset = WIDGET_PRESETS[e.target.value] || {};
+    for (const k of Object.keys(WIDGET_PRESETS.mirror)) {
+      S[k] = preset[k] || "";
+      const el = $(`[data-key="${k}"]`);
+      if (el) el.value = S[k];
+    }
+    save();
+  });
 }
 
 // ---------- Step 1: playlist ----------

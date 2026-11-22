@@ -96,6 +96,7 @@ fun LiveApp(a: MainActivity) {
     val look = a.look.value
     val accent = parseColor(look.accent.ifBlank { c?.accent ?: "" }, Palette.live)
     var tab by remember { mutableStateOf(Tab.Home) }
+    LaunchedEffect(a.openSeries.value) { if (a.openSeries.value != null) tab = Tab.Series }
     LaunchedEffect(a.searchNow.intValue) { if (a.searchNow.intValue > 0) tab = Tab.Search }
     val tabReq = remember { Tab.entries.associateWith { FocusRequester() } }
     var topFocused by remember { mutableStateOf(false) }
@@ -852,6 +853,7 @@ private fun VodTab(a: MainActivity, xc: Xc, series: Boolean, accent: Color) {
     }
     var cat by remember(series) { mutableStateOf<VodCat?>(null) }
     var open by remember(series) { mutableStateOf<VodItem?>(null) }
+    LaunchedEffect(series, a.openSeries.value) { if (series) a.openSeries.value?.let { open = it; a.openSeries.value = null } }
     open?.let { s -> SeriesDetail(a, xc, s, accent) { open = null }; return }
     val list = cats
     if (list == null) { Text("Loading…", color = Palette.sub, modifier = Modifier.padding(horizontal = 48.dp)); return }

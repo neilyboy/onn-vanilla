@@ -30,6 +30,15 @@ type Setup struct {
 	IdleMinutes     int            `json:"idleMinutes"`
 	Scale           float64        `json:"scale"`
 	IconStyle       string         `json:"iconStyle,omitempty"`
+	Layout          string         `json:"layout,omitempty"`
+	WOnnow          string         `json:"wOnnow,omitempty"`
+	WScores         string         `json:"wScores,omitempty"`
+	WResume         string         `json:"wResume,omitempty"`
+	WNewvod         string         `json:"wNewvod,omitempty"`
+	WCalendar       string         `json:"wCalendar,omitempty"`
+	WNews           string         `json:"wNews,omitempty"`
+	WWeather        string         `json:"wWeather,omitempty"`
+	Countdowns      string         `json:"countdowns,omitempty"`
 	Profiles        []Profile      `json:"profiles"`
 	AskProfile      bool           `json:"askProfile"`
 	Leagues         []string       `json:"leagues"`
@@ -153,6 +162,7 @@ func (s Setup) boxConfig() (map[string]any, error) {
 			"show_weather": s.Latitude != nil, "show_forecast": s.ShowForecast, "show_settings": true,
 			"greeting": s.Greeting, "scale": scale, "icon_style": s.IconStyle,
 		},
+		"widgets": widgets(s),
 		"feeds": map[string]any{
 			"calendars": lines(s.Calendars), "news": newsFeeds(s), "alerts": !s.NoAlerts,
 		},
@@ -197,6 +207,24 @@ func xcConfig(s Setup) any {
 
 // WorldNewsFeeds are used when the user ticks "World headlines" in the wizard.
 var WorldNewsFeeds = []string{"https://feeds.bbci.co.uk/news/world/rss.xml", "https://feeds.npr.org/1004/rss.xml"}
+
+// widgets lists the home screen widgets in display order with their spot (left, center or right).
+func widgets(s Setup) map[string]any {
+	layout := s.Layout
+	if layout == "" {
+		layout = "minimal"
+	}
+	items := []map[string]string{}
+	for _, w := range []struct{ id, pos string }{
+		{"weather", s.WWeather}, {"calendar", s.WCalendar}, {"news", s.WNews},
+		{"scores", s.WScores}, {"onnow", s.WOnnow}, {"resume", s.WResume}, {"newvod", s.WNewvod},
+	} {
+		if w.pos == "left" || w.pos == "center" || w.pos == "right" {
+			items = append(items, map[string]string{"id": w.id, "pos": w.pos})
+		}
+	}
+	return map[string]any{"layout": layout, "items": items, "countdowns": lines(s.Countdowns)}
+}
 
 func newsFeeds(s Setup) []string {
 	f := lines(s.NewsLocal)

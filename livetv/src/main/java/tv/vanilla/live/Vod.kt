@@ -17,6 +17,8 @@ data class VodCat(val id: String, val name: String)
 data class VodItem(val id: String, val name: String, val poster: String, val ext: String, val rating: String, val year: String, val plot: String, val series: Boolean, val adult: Boolean)
 data class Episode(val id: String, val season: Int, val num: Int, val title: String, val ext: String, val plot: String, val still: String, val duration: String)
 
+private val YEAR = Regex("""(19|20)\d\d""")
+
 private fun JSONObject.str(k: String) = optString(k).takeIf { it.isNotBlank() && it != "null" && it != "0" } ?: ""
 
 object Vod {
@@ -39,8 +41,8 @@ object Vod {
                 name = o.optString("name"),
                 poster = o.str(if (series) "cover" else "stream_icon"),
                 ext = o.str("container_extension"),
-                rating = o.str("rating").takeIf { (it.toDoubleOrNull() ?: 1.0) > 0 } ?: "",
-                year = o.str("year").ifBlank { o.str("releaseDate").take(4) },
+                rating = o.str("rating").toDoubleOrNull()?.takeIf { it > 0 }?.let { "%.1f".format(it) } ?: "",
+                year = (o.str("year").takeIf { YEAR.matches(it) } ?: o.str("releaseDate").take(4)).takeIf { YEAR.matches(it) } ?: "",
                 plot = o.str("plot"),
                 series = series,
                 adult = o.optInt("is_adult") == 1,
@@ -61,7 +63,7 @@ object Vod {
             Episode(
                 id = o.optString("id"), season = o.optInt("season", 1), num = o.optInt("episode_num"),
                 title = o.str("title"), ext = o.str("container_extension"), plot = info.str("plot"),
-                still = info.str("movie_image"), duration = info.str("duration"),
+                still = info.str("movie_image"), duration = info.str("duration").removePrefix("00:"),
             )
         }.sortedWith(compareBy({ it.season }, { it.num }))
     }

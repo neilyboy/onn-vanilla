@@ -101,7 +101,7 @@ class MultiviewActivity : ComponentActivity() {
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
                 val ch = indices[f]
                 players.forEach { it.release() }; players.clear()
-                startActivity(Intent(this, PlayerActivity::class.java).putExtras(intent).putExtra("index", ch))
+                startActivity(Intent(this, PlayerActivity::class.java).putExtras(intent).putExtra("index", ch).putExtra("url", Repo.channels[ch].url))
                 finish()
             }
             else -> return super.onKeyDown(keyCode, event)

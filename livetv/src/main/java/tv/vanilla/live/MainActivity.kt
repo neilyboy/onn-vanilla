@@ -353,6 +353,7 @@ class MainActivity : ComponentActivity() {
         startActivity(
             Intent(this, PlayerActivity::class.java)
                 .putExtra("index", ch.index)
+                .putExtra("url", ch.url)
                 .putExtra("profile", profile.value.name)
                 .putExtra("kids", profile.value.kids)
         )

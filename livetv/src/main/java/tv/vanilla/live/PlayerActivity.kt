@@ -119,7 +119,9 @@ class PlayerActivity : ComponentActivity() {
                 } else error.value = "Stream unavailable (${e.errorCodeName})"
             }
         })
-        tune(intent.getIntExtra("index", 0))
+        // The lineup can refresh between picking a channel and opening the player, so find it by stream URL first.
+        val url = intent.getStringExtra("url")
+        tune(url?.let { u -> Repo.channels.indexOfFirst { it.url == u }.takeIf { it >= 0 } } ?: intent.getIntExtra("index", 0))
 
         setContent { ScaledLook(this) { PlayerScreen() } }
     }

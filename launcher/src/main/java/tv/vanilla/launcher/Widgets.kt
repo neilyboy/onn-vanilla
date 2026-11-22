@@ -333,11 +333,13 @@ private fun Cameras(haCams: List<HaEntity>, liveCams: List<GCam>, activity: Main
     val ctx = LocalContext.current
     var tick by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) { while (true) { delay(10_000); tick++ } }
+    // HA names often carry a device prefix ("Garage Driveway"), so pair with a Live TV camera when either name contains the other.
+    fun same(ha: String, live: String) = ha.contains(live, true) || live.contains(ha, true)
     Column {
         Title("Cameras", theme)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(4.dp)) {
             items(haCams, key = { it.id }) { e ->
-                val live = liveCams.firstOrNull { it.name.equals(e.name, true) }
+                val live = liveCams.firstOrNull { same(e.name, it.name) }
                 Card(theme, 192.dp, 108.dp, onClick = { live?.let { openLive(ctx, "tune", it.name) } }) {
                     AsyncImage(
                         coil.request.ImageRequest.Builder(ctx).data(haCameraUrl(cfg, e.id) + "?t=$tick").addHeader("Authorization", "Bearer ${cfg.haToken}")
@@ -347,7 +349,7 @@ private fun Cameras(haCams: List<HaEntity>, liveCams: List<GCam>, activity: Main
                     Text(e.name, color = Color.White, fontSize = 10.sp, modifier = Modifier.align(Alignment.BottomStart).background(Color(0x99000000)).padding(horizontal = 6.dp, vertical = 2.dp))
                 }
             }
-            items(liveCams.filter { c -> haCams.none { it.name.equals(c.name, true) } }, key = { "live:" + it.name }) { c ->
+            items(liveCams.filter { c -> haCams.none { same(it.name, c.name) } }, key = { "live:" + it.name }) { c ->
                 Card(theme, 192.dp, 108.dp, onClick = { openLive(ctx, "tune", c.name) }) {
                     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Outlined.Videocam, null, tint = theme.text, modifier = Modifier.size(28.dp))

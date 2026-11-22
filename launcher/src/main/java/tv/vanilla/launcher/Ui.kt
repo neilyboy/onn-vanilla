@@ -99,7 +99,7 @@ fun LauncherScreen(
                 if (ev.key == Key.Menu) { showSetup = true; true } else false
             }
     ) {
-        Background(cfg, theme, walls)
+        Background(cfg, theme, if (idle && activity.photos.value.isNotEmpty()) activity.photos.value else walls, idle && activity.photos.value.isNotEmpty())
 
         // Legibility scrims
         Box(
@@ -183,13 +183,13 @@ fun LauncherScreen(
 }
 
 @Composable
-private fun Background(cfg: LauncherConfig, theme: VanillaTheme, walls: List<String>) {
+private fun Background(cfg: LauncherConfig, theme: VanillaTheme, walls: List<String>, frame: Boolean = false) {
     val base = Modifier.fillMaxSize().background(
         if (cfg.wallpaperMode == "solid") SolidColor(theme.background.first())
         else Brush.linearGradient(theme.background)
     )
     Box(base) {
-        if (cfg.wallpaperMode != "photos" || walls.isEmpty()) return@Box
+        if ((cfg.wallpaperMode != "photos" && !frame) || walls.isEmpty()) return@Box
         var index by remember(walls) { mutableIntStateOf(0) }
         LaunchedEffect(walls, cfg.wallpaperIntervalSec) {
             while (true) {
@@ -210,7 +210,7 @@ private fun Background(cfg: LauncherConfig, theme: VanillaTheme, walls: List<Str
             AsyncImage(
                 model = ImageRequest.Builder(ctx).data(url).size(1920, 1080).crossfade(false).build(),
                 contentDescription = null,
-                contentScale = ContentScale.Crop,
+                contentScale = if (frame) ContentScale.Fit else ContentScale.Crop,
                 modifier = Modifier.fillMaxSize().scale(zoom),
             )
         }

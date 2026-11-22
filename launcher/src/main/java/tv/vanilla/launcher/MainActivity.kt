@@ -34,6 +34,24 @@ class MainActivity : ComponentActivity() {
     val alerts = mutableStateOf<List<Alert>>(emptyList())
     val glance = mutableStateOf<LiveGlance?>(null)
     val radar = mutableStateOf<String?>(null)
+    val ha = mutableStateOf<List<HaEntity>>(emptyList())
+    val photos = mutableStateOf<List<String>>(emptyList())
+
+    private suspend fun haLoop() {
+        while (true) {
+            config.value?.let { c -> if (c.widget("ha") != null || c.widget("cameras") != null) ha.value = withContext(Dispatchers.IO) { fetchHa(c) } }
+            delay(if (idle.value) 120_000L else 20_000L)
+        }
+    }
+
+    fun toggleHa(e: HaEntity) {
+        val c = config.value ?: return
+        lifecycleScope.launch {
+            withContext(Dispatchers.IO) { haToggle(c, e) }
+            delay(700)
+            ha.value = withContext(Dispatchers.IO) { fetchHa(c) }
+        }
+    }
 
     private suspend fun glanceLoop() {
         while (true) {
@@ -124,6 +142,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch { weatherLoop() }
         lifecycleScope.launch { delay(3_000); feedLoop() }
         lifecycleScope.launch { glanceLoop() }
+        lifecycleScope.launch { haLoop() }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -214,6 +233,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private suspend fun reloadWallpapers(c: LauncherConfig) {
+        photos.value = if (c.photos.isEmpty()) emptyList() else withContext(Dispatchers.IO) { fetchPhotos(c.photos) }
         if (c.wallpaperMode != "photos" || c.wallpaperManifestUrl.isBlank()) {
             wallpapers.value = emptyList()
             return

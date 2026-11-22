@@ -39,6 +39,12 @@ type Setup struct {
 	WNews           string         `json:"wNews,omitempty"`
 	WWeather        string         `json:"wWeather,omitempty"`
 	Countdowns      string         `json:"countdowns,omitempty"`
+	WHa             string         `json:"wHa,omitempty"`
+	WCameras        string         `json:"wCameras,omitempty"`
+	HaURL           string         `json:"haUrl,omitempty"`
+	HaToken         string         `json:"haToken,omitempty"`
+	HaEntities      string         `json:"haEntities,omitempty"`
+	Photos          string         `json:"photos,omitempty"`
 	Profiles        []Profile      `json:"profiles"`
 	AskProfile      bool           `json:"askProfile"`
 	Leagues         []string       `json:"leagues"`
@@ -163,6 +169,8 @@ func (s Setup) boxConfig() (map[string]any, error) {
 			"greeting": s.Greeting, "scale": scale, "icon_style": s.IconStyle,
 		},
 		"widgets": widgets(s),
+		"ha":      map[string]any{"url": strings.TrimSpace(s.HaURL), "token": strings.TrimSpace(s.HaToken), "entities": lines(s.HaEntities)},
+		"photos":  map[string]any{"sources": lines(s.Photos)},
 		"feeds": map[string]any{
 			"calendars": lines(s.Calendars), "news": newsFeeds(s), "alerts": !s.NoAlerts,
 		},
@@ -217,7 +225,7 @@ func widgets(s Setup) map[string]any {
 	items := []map[string]string{}
 	for _, w := range []struct{ id, pos string }{
 		{"weather", s.WWeather}, {"calendar", s.WCalendar}, {"news", s.WNews},
-		{"scores", s.WScores}, {"onnow", s.WOnnow}, {"resume", s.WResume}, {"newvod", s.WNewvod},
+		{"ha", s.WHa}, {"scores", s.WScores}, {"onnow", s.WOnnow}, {"cameras", s.WCameras}, {"resume", s.WResume}, {"newvod", s.WNewvod},
 	} {
 		if w.pos == "left" || w.pos == "center" || w.pos == "right" {
 			items = append(items, map[string]string{"id": w.id, "pos": w.pos})

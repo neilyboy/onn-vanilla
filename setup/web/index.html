@@ -124,8 +124,22 @@
         <label>This week — calendar events and countdowns<select data-key="wCalendar"><option value="">Off</option><option value="left">Left</option><option value="center">Middle</option><option value="right">Right</option></select></label>
         <label>Headlines — news cards with photos<select data-key="wNews"><option value="">Off</option><option value="left">Left</option><option value="center">Middle</option><option value="right">Right</option></select></label>
         <label>Weather — next 12 hours and live radar<select data-key="wWeather"><option value="">Off</option><option value="left">Left</option><option value="center">Middle</option><option value="right">Right</option></select></label>
+      <label>Home Assistant — sensors, lights, locks and switches<select data-key="wHa"><option value="">Off</option><option value="left">Left</option><option value="center">Middle</option><option value="right">Right</option></select></label>
+      <label>Cameras — Home Assistant snapshots and your Cameras channel group<select data-key="wCameras"><option value="">Off</option><option value="left">Left</option><option value="center">Middle</option><option value="right">Right</option></select></label>
       <label>Countdowns <span class="muted">(optional, one per line: Name|MM-DD for yearly, Name|YYYY-MM-DD for once. US holidays are built in.)</span>
         <textarea data-key="countdowns" rows="2" placeholder="Mom's birthday|03-14&#10;Beach trip|2027-06-20"></textarea>
+      </label>
+      <label>Home Assistant address <span class="muted">(optional, reachable from the TV box)</span>
+        <input data-key="haUrl" placeholder="http://homeassistant.local:8123">
+      </label>
+      <label>Home Assistant access token <span class="muted">(Profile → Security → Long-lived access tokens. Stays on this computer and the box; never exported.)</span>
+        <input data-key="haToken" type="password" autocomplete="off">
+      </label>
+      <label>Home Assistant entities <span class="muted">(one per line, in order. Lights, switches, locks, covers, scripts and scenes can be toggled with OK; camera.* entities show in Cameras)</span>
+        <textarea data-key="haEntities" rows="3" placeholder="sensor.outside_temperature&#10;light.living_room&#10;lock.front_door&#10;camera.driveway"></textarea>
+      </label>
+      <label>Photo frame <span class="muted">(optional, one per line: an Immich share link, a Google Photos shared-album link, a wallpaper manifest .json or image URLs. Shown full screen with the clock when the TV sits idle.)</span>
+        <textarea data-key="photos" rows="2" placeholder="https://photos.app.goo.gl/…&#10;https://immich.example.com/share/…"></textarea>
       </label>
     </div>
     <div class="nextbar"><button class="next" data-go="sports">Next: Sports →</button></div>

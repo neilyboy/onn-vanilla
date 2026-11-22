@@ -41,6 +41,10 @@ data class LauncherConfig(
     val layout: String = "minimal",
     val widgets: List<WidgetSpec> = emptyList(),
     val countdowns: List<String> = emptyList(),
+    val haUrl: String = "",
+    val haToken: String = "",
+    val haEntities: List<String> = emptyList(),
+    val photos: List<String> = emptyList(),
 ) {
     fun widget(id: String) = if (layout == "minimal") null else widgets.firstOrNull { it.id == id }
     val hasWeather get() = showWeather && !latitude.isNaN() && !longitude.isNaN()
@@ -69,6 +73,10 @@ data class LauncherConfig(
                     (0 until a.length()).mapNotNull { a.optJSONObject(it) }.map { WidgetSpec(it.optString("id"), it.optString("pos", "center")) }
                 } ?: emptyList(),
                 countdowns = strings(root.optJSONObject("widgets")?.optJSONArray("countdowns")),
+                haUrl = root.optJSONObject("ha")?.optString("url", "") ?: "",
+                haToken = root.optJSONObject("ha")?.optString("token", "") ?: "",
+                haEntities = strings(root.optJSONObject("ha")?.optJSONArray("entities")),
+                photos = strings(root.optJSONObject("photos")?.optJSONArray("sources")),
                 scale = ui.optDouble("scale", 1.0).toFloat().coerceIn(0.6f, 1.6f),
                 kenBurns = ui.optBoolean("ken_burns", true),
                 showWeather = ui.optBoolean("show_weather", true),

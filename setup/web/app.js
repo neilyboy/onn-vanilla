@@ -44,7 +44,7 @@ function go(step) {
 const WIDGET_PRESETS = {
   minimal: {},
   glance: { wScores: "center", wOnnow: "center", wResume: "center", wNewvod: "center" },
-  mirror: { wCalendar: "left", wNews: "left", wWeather: "right", wScores: "center", wOnnow: "center", wResume: "center", wNewvod: "", },
+  mirror: { wCalendar: "left", wNews: "left", wWeather: "right", wHa: "right", wScores: "center", wOnnow: "center", wCameras: "center", wResume: "center", wNewvod: "center" },
 };
 
 function bindFields() {
@@ -333,7 +333,7 @@ async function init() {
   $("#push").onclick = () => run("/api/box/provision", provisionBody({ configOnly: true }));
   $("#export").onclick = () => {
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([JSON.stringify({ onnVanilla: 1, setup: { ...S, xcUser: undefined, xcPass: undefined } }, null, 2)], { type: "application/json" }));
+    a.href = URL.createObjectURL(new Blob([JSON.stringify({ onnVanilla: 1, setup: { ...S, xcUser: undefined, xcPass: undefined, haToken: undefined } }, null, 2)], { type: "application/json" }));
     a.download = "onn-vanilla-settings.json";
     a.click();
     URL.revokeObjectURL(a.href);

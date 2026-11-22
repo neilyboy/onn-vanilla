@@ -1,8 +1,10 @@
-@file:OptIn(ExperimentalTvMaterial3Api::class)
+@file:OptIn(ExperimentalTvMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 
 package tv.vanilla.launcher
 
 import androidx.compose.animation.Crossfade
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -53,6 +55,8 @@ private fun Widget(id: String, activity: MainActivity, cfg: LauncherConfig, them
         "newvod" -> g?.newVod?.takeIf { it.isNotEmpty() }?.let { Posters("New on Movies & Series", it.map { v -> Triple(v.title, v.poster, -1f) }, theme) { i -> openLive(activity, "vod_id", (if (it[i].series) "s:" else "m:") + it[i].id) } }
         "calendar" -> Week(activity.agenda.value, cfg.countdowns, theme, wide)
         "news" -> NewsCards(activity.news.value, theme, wide)
+        "ha" -> activity.ha.value.filter { it.domain != "camera" }.takeIf { it.isNotEmpty() }?.let { HomePanel(it, activity, theme) }
+        "cameras" -> Cameras(activity.ha.value.filter { it.domain == "camera" }, g?.cameras.orEmpty(), activity, cfg, theme)
         "weather" -> activity.weather.value?.let { HourlyRadar(it, activity.radar.value, cfg, theme, wide) }
     }
 }
@@ -227,16 +231,16 @@ private fun NewsCards(items: List<Headline>, theme: VanillaTheme, wide: Boolean)
         Crossfade(lead, label = "lead") { h ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (h.image.isNotBlank()) {
-                    AsyncImage(h.image, null, contentScale = ContentScale.Crop, modifier = Modifier.size(if (wide) 200.dp else 128.dp, if (wide) 112.dp else 72.dp).clip(RoundedCornerShape(10.dp)))
+                    AsyncImage(h.image, null, contentScale = ContentScale.Crop, modifier = Modifier.size(if (wide) 200.dp else 112.dp, if (wide) 112.dp else 63.dp).clip(RoundedCornerShape(10.dp)))
                     Spacer(Modifier.width(12.dp))
                 }
                 Column {
                     Text(h.source.uppercase(), color = theme.accent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    Text(h.title, color = theme.text, fontSize = if (wide) 16.sp else 13.sp, fontWeight = FontWeight.Medium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    Text(h.title, color = theme.text, fontSize = if (wide) 16.sp else 13.sp, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
-        val rest = (1..3).map { withImg[(i + it) % withImg.size] }.distinct().filter { it != lead }
+        val rest = (1..2).map { withImg[(i + it) % withImg.size] }.distinct().filter { it != lead }
         rest.forEach { h ->
             Row(Modifier.padding(top = 8.dp)) {
                 Text(h.source.take(14).uppercase(), color = theme.subText, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(78.dp).padding(top = 2.dp))
@@ -293,5 +297,61 @@ private fun Radar(lat: Double, lon: Double, radarBase: String, height: Dp) {
             }
         }
         Box(Modifier.align(Alignment.Center).size(8.dp).clip(CircleShape).background(Color.White))
+    }
+}
+
+@Composable
+private fun HomePanel(list: List<HaEntity>, activity: MainActivity, theme: VanillaTheme) {
+    Column {
+        Title("Home", theme)
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            list.forEach { e ->
+                val value = if (e.unit.isNotBlank()) "${e.state.toDoubleOrNull()?.let { if (it % 1.0 == 0.0) it.toInt().toString() else "%.1f".format(it) } ?: e.state}${e.unit}" else e.state.replace('_', ' ')
+                val body: @Composable BoxScope.() -> Unit = {
+                    Row(Modifier.fillMaxSize().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (e.toggleable) Box(Modifier.size(8.dp).clip(CircleShape).background(if (e.on) theme.accent else theme.subText.copy(alpha = 0.4f)))
+                        if (e.toggleable) Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text(e.name, color = theme.subText, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(value, color = theme.text, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                        }
+                    }
+                }
+                if (e.toggleable) Card(theme, 168.dp, 48.dp, onClick = { activity.toggleHa(e) }, content = body)
+                else Box(Modifier.size(168.dp, 48.dp).clip(RoundedCornerShape(12.dp)).background(theme.scrim.copy(alpha = 0.35f)), content = body)
+            }
+        }
+    }
+}
+
+@Composable
+private fun Cameras(haCams: List<HaEntity>, liveCams: List<GCam>, activity: MainActivity, cfg: LauncherConfig, theme: VanillaTheme) {
+    if (haCams.isEmpty() && liveCams.isEmpty()) return
+    val ctx = LocalContext.current
+    var tick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) { while (true) { delay(10_000); tick++ } }
+    Column {
+        Title("Cameras", theme)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(4.dp)) {
+            items(haCams, key = { it.id }) { e ->
+                val live = liveCams.firstOrNull { it.name.equals(e.name, true) }
+                Card(theme, 192.dp, 108.dp, onClick = { live?.let { openLive(ctx, "tune", it.name) } }) {
+                    AsyncImage(
+                        coil.request.ImageRequest.Builder(ctx).data(haCameraUrl(cfg, e.id) + "?t=$tick").addHeader("Authorization", "Bearer ${cfg.haToken}")
+                            .memoryCacheKey(e.id).placeholderMemoryCacheKey(e.id).build(),
+                        null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                    )
+                    Text(e.name, color = Color.White, fontSize = 10.sp, modifier = Modifier.align(Alignment.BottomStart).background(Color(0x99000000)).padding(horizontal = 6.dp, vertical = 2.dp))
+                }
+            }
+            items(liveCams.filter { c -> haCams.none { it.name.equals(c.name, true) } }, key = { "live:" + it.name }) { c ->
+                Card(theme, 192.dp, 108.dp, onClick = { openLive(ctx, "tune", c.name) }) {
+                    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Outlined.Videocam, null, tint = theme.text, modifier = Modifier.size(28.dp))
+                        Text(c.name, color = theme.text, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp, start = 8.dp, end = 8.dp))
+                    }
+                }
+            }
+        }
     }
 }

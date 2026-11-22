@@ -39,20 +39,22 @@ object Glance {
         ResumeStore.all(ctx, profile).take(10).forEach { r ->
             ra.put(JSONObject().put("key", r.key).put("title", r.title).put("subtitle", r.subtitle).put("poster", r.poster).put("progress", r.progress.toDouble()))
         }
+        val cams = JSONArray()
+        channels.filter { it.group.contains("camera", ignoreCase = true) }.take(12).forEach { cams.put(JSONObject().put("name", it.name).put("logo", it.logo)) }
         val old = runCatching { JSONObject(file(ctx).readText()) }.getOrNull()
-        val root = JSONObject().put("profile", profile).put("at", now).put("onNow", onNow).put("games", ga).put("resume", ra)
-            .put("newVod", old?.optJSONArray("newVod") ?: JSONArray()).put("newVodAt", old?.optLong("newVodAt") ?: 0L)
+        val root = JSONObject().put("profile", profile).put("at", now).put("onNow", onNow).put("games", ga).put("resume", ra).put("cameras", cams)
+            .put("newVod", old?.optJSONArray("newVod") ?: JSONArray()).put("newVodAt2", old?.optLong("newVodAt2") ?: 0L)
         val tmp = File(ctx.filesDir, "glance.json.tmp")
         tmp.writeText(root.toString())
         tmp.renameTo(file(ctx))
     }
 
     fun newVodAge(ctx: android.content.Context) =
-        System.currentTimeMillis() - (runCatching { JSONObject(file(ctx).readText()).optLong("newVodAt") }.getOrNull() ?: 0L)
+        System.currentTimeMillis() - (runCatching { JSONObject(file(ctx).readText()).optLong("newVodAt2") }.getOrNull() ?: 0L)
 
     fun writeNewVod(ctx: android.content.Context, items: JSONArray) = runCatching {
         val root = runCatching { JSONObject(file(ctx).readText()) }.getOrDefault(JSONObject())
-        root.put("newVod", items).put("newVodAt", System.currentTimeMillis())
+        root.put("newVod", items).put("newVodAt2", System.currentTimeMillis())
         val tmp = File(ctx.filesDir, "glance.json.tmp")
         tmp.writeText(root.toString())
         tmp.renameTo(file(ctx))

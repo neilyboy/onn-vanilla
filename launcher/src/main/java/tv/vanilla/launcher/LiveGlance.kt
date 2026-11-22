@@ -12,7 +12,8 @@ data class GTeam(val abbr: String, val name: String, val logo: String, val color
 data class GGame(val id: String, val league: String, val state: String, val detail: String, val start: Long, val network: String, val away: GTeam, val home: GTeam)
 data class GResume(val key: String, val title: String, val subtitle: String, val poster: String, val progress: Float)
 data class GVod(val id: String, val title: String, val poster: String, val series: Boolean)
-data class LiveGlance(val profile: String, val onNow: List<GChan>, val games: List<GGame>, val resume: List<GResume>, val newVod: List<GVod>)
+data class GCam(val name: String, val logo: String)
+data class LiveGlance(val profile: String, val onNow: List<GChan>, val games: List<GGame>, val resume: List<GResume>, val newVod: List<GVod>, val cameras: List<GCam> = emptyList())
 
 private const val LIVE_PKG = "tv.vanilla.live"
 
@@ -33,6 +34,7 @@ fun readGlance(ctx: Context): LiveGlance? = runCatching {
         },
         r.optJSONArray("resume").objs().map { GResume(it.optString("key"), it.optString("title"), it.optString("subtitle"), it.optString("poster"), it.optDouble("progress", 0.0).toFloat()) },
         r.optJSONArray("newVod").objs().map { GVod(it.optString("id"), it.optString("title"), it.optString("poster"), it.optBoolean("series")) },
+        r.optJSONArray("cameras").objs().map { GCam(it.optString("name"), it.optString("logo")) },
     )
 }.getOrNull()
 

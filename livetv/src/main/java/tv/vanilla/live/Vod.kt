@@ -21,6 +21,9 @@ private val YEAR = Regex("""(19|20)\d\d""")
 
 private fun JSONObject.str(k: String) = optString(k).takeIf { it.isNotBlank() && it != "null" && it != "0" } ?: ""
 
+/** Categories left out of "New on": other-language sections, sports replays and unsorted dumps. */
+private val NOT_NEW = Regex("""^(?!US\b|UK\b|EN\b)[A-Z]{2} [|-]|(?i)bollywood|korean|anime sub|replays|unsorted|unlabeled|uncategori[sz]ed""")
+
 object Vod {
     private val cache = HashMap<String, Any>()
 
@@ -52,7 +55,7 @@ object Vod {
 
     /** The [n] most recently added movies or series (non-adult), streamed so the full catalog never sits in memory. */
     fun newest(xc: Xc, series: Boolean, n: Int = 12): JSONArray {
-        val adultCats = runCatching { cats(xc, series, true).filter { isAdultGroup(it.name) }.map { it.id }.toSet() }.getOrDefault(emptySet())
+        val adultCats = runCatching { cats(xc, series, true).filter { isAdultGroup(it.name) || NOT_NEW.containsMatchIn(it.name) }.map { it.id }.toSet() }.getOrDefault(emptySet())
         val top = java.util.PriorityQueue<Pair<Long, JSONObject>>(compareBy { it.first })
         val conn = java.net.URL(xc.api(if (series) "get_series" else "get_vod_streams")).openConnection() as java.net.HttpURLConnection
         conn.connectTimeout = 15000; conn.readTimeout = 120000

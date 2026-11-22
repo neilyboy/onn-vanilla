@@ -129,7 +129,7 @@ fun LauncherScreen(
             else Row(Modifier.weight(1f).fillMaxWidth().padding(vertical = 16.dp)) {
                 val side = { pos: String -> cfg.widgets.any { it.pos == pos } }
                 if (side("left")) { WidgetColumn(activity, cfg, theme, "left", Modifier.width(380.dp).fillMaxHeight()); Spacer(Modifier.width(24.dp)) }
-                WidgetColumn(activity, cfg, theme, "center", Modifier.weight(1f).fillMaxHeight().verticalScroll(androidx.compose.foundation.rememberScrollState()))
+                WidgetColumn(activity, cfg, theme, "center", Modifier.weight(1f).fillMaxHeight())
                 if (side("right")) { Spacer(Modifier.width(24.dp)); WidgetColumn(activity, cfg, theme, "right", Modifier.width(380.dp).fillMaxHeight()) }
             }
             if (!idle && cfg.widget("news") == null) NewsStrip(activity.news.value, theme)

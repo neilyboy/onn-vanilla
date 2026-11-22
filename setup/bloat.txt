@@ -1,0 +1,36 @@
+# Packages offered for removal. Removal is `pm uninstall -k --user 0` (per-user, reversible
+# with "Restore" in the setup app or provision/restore-onn.sh). Packages not on the box are skipped.
+# Format: package | description
+# Stock home apps (launcherx/tvlauncher) are never removed: Google TV loops on a setup-recovery
+# screen without them. Vanilla Home hides them with its Home-button accessibility service instead.
+
+com.spocky.projengmenu | Projectivy Launcher
+com.google.android.tvrecommendations | Home screen recommendations
+com.google.android.leanbacklauncher.recommendations | Leanback recommendations
+com.google.android.backdrop | Ambient mode / Backdrop
+com.google.android.apps.tv.dreamx | Google TV ambient screensaver
+com.google.android.katniss | Google Assistant / voice search
+com.google.android.apps.tv.search | Google TV search
+com.google.android.videos | Google Play Movies & TV
+com.google.android.youtube.tv | YouTube
+com.google.android.youtube.tvmusic | YouTube Music
+com.google.android.youtube.tvkids | YouTube Kids
+com.google.android.play.games | Google Play Games
+com.google.android.apps.mediashell.ambient | Cast ambient
+com.google.android.feedback | Google feedback
+com.netflix.ninja | Netflix
+com.disney.disneyplus | Disney+
+com.amazon.amazonvideo.livingroom | Prime Video
+com.hulu.livingroomplus | Hulu
+com.cbs.ott | Paramount+
+com.apple.atve.androidtv.appletv | Apple TV
+com.wbd.stream | Max
+com.hbo.hbonow | HBO Max (legacy)
+com.peacocktv.peacockandroid | Peacock
+com.spotify.tv.android | Spotify
+com.plexapp.android | Plex
+tv.pluto.android | Pluto TV
+com.tubitv | Tubi
+com.walmart.otto | Walmart / Onn promo app
+com.sling | Sling TV
+com.google.android.apps.tv.freeplay | Google TV free channels

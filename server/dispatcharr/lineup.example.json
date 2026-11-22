@@ -1,0 +1,11 @@
+{
+  "groups": [
+    {"name": "Sports",        "start": 100, "sources": ["^(US|USA)\\s*\\|\\s*Sports\\b"]},
+    {"name": "News",          "start": 300, "sources": ["^(US|USA)\\s*\\|\\s*News"]},
+    {"name": "Entertainment", "start": 400, "sources": ["^(US|USA)\\s*\\|\\s*Entertainment"]},
+    {"name": "Movies",        "start": 600, "sources": ["^(US|USA)\\s*\\|\\s*Movies"]},
+    {"name": "Kids",          "start": 700, "sources": ["^(US|USA)\\s*\\|\\s*Kids"]},
+    {"name": "Locals",        "start": 2,   "sources": ["^(US|USA)\\s*\\|\\s*(Local )?(ABC|CBS|FOX|NBC|CW|PBS)( Locals)?"],
+     "include": "YOUR_CITY"}
+  ]
+}

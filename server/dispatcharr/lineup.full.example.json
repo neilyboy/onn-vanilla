@@ -1,0 +1,29 @@
+{
+  "skip_groups": "low ?bw|\\btest\\b|^temp",
+  "groups": [
+    {"name": "Locals", "start": 2, "sources": [ "^(US|USA)\\s*\\|\\s*(Local\\b|.*Locals)" ], "include": "YOUR_CITY|YOUR_CALL_LETTERS"},
+    {"name": "Cameras", "start": 90, "merge": false, "sources": [ "^cameras?$" ]},
+    {"name": "Sports", "start": 100, "sources": [ "^(US|USA)\\s*\\|\\s*Sports\\b" ]},
+    {"name": "News", "start": 400, "sources": [ "^(US|USA)\\s*\\|\\s*News" ]},
+    {"name": "Entertainment", "start": 500, "sources": [ "^(US|USA)\\s*\\|\\s*Entertainment" ]},
+    {"name": "Movies", "start": 900, "sources": [ "^(US|USA)\\s*\\|\\s*Movies" ]},
+    {"name": "Kids", "start": 1000, "sources": [ "^(US|USA)\\s*\\|\\s*Kids" ]},
+    {"name": "Music", "start": 1100, "sources": [ "^(US|USA)\\s*\\|\\s*Music" ]},
+    {"name": "Documentary", "start": 1250, "sources": [ "^(US|USA)\\s*\\|\\s*Documentar" ]},
+    {"name": "Replays", "start": 60000, "merge": false, "sources": [ "replay" ]},
+    {"name": "Adult", "start": 70000, "merge": false, "sources": [ "^18\\+", "xxx|adult" ]},
+    {"name": "Free TV", "start": 2000, "sources": [ "pluto|tubi|samsung|plex ?tv|xumo|stirr|peacock live|mw\\+" ]},
+    {"name": "NFL", "start": 4000, "merge": false, "sources": [ "\\bnfl\\b" ]},
+    {"name": "College Football", "start": 4500, "merge": false, "sources": [ "ncaaf|ncaa football|college football" ]},
+    {"name": "NBA", "start": 5000, "merge": false, "sources": [ "\\bnba\\b" ]},
+    {"name": "WNBA & College Basketball", "start": 5500, "merge": false, "sources": [ "wnba|ncaa.*basketball|ncaa men|ncaa women|njcaa" ]},
+    {"name": "NHL", "start": 7000, "merge": false, "sources": [ "\\bnhl\\b" ]},
+    {"name": "MLB", "start": 7500, "merge": false, "sources": [ "\\bmlb\\b|milb|ncaa baseball" ]},
+    {"name": "Soccer", "start": 9000, "merge": false, "sources": [ "^(US|USA|Sports|LIVE)\\s*\\|.*(mls|nwsl|soccer|epl|premier|champions|efl|bundesliga|la ?liga|serie a|fanatiz)" ]},
+    {"name": "Fights & PPV", "start": 10500, "merge": false, "sources": [ "ppv|pay-?per|ufc|fight|wrestling|boxing" ]},
+    {"name": "ESPN+", "start": 12000, "merge": false, "sources": [ "espn" ]},
+    {"name": "Sports Events", "start": 15000, "merge": false, "sources": [ "^(Sports|SPORTS|LIVE|Live)\\s*\\|", "^(US|USA)\\s*\\|.*(sport|event|ppv|game|league|racing|golf|tennis|nascar|f1|olympic|peacock|paramount|dazn|prime|flo|nfhs|big ?ten|sec\\b|acc\\b|fox one|victory|fubo)", "^24/7 (sports|motor)" ]},
+    {"name": "24/7 Channels", "start": 40000, "merge": false, "sources": [ "^24/7", "^EN\\s*✦", "^EN\\s*\\|", "^4K", "christmas", "relaxation", "ambiance" ]},
+    {"name": "More US", "start": 1300, "sources": [ "^(US|USA)\\s*\\|" ], "skip_groups": "local|locals|univision|telemundo|galavision|unimas|international"}
+  ]
+}

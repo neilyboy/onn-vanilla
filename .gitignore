@@ -1,0 +1,15 @@
+.gradle/
+build/
+local.properties
+*.jks
+keystore.properties
+.idea/
+*.iml
+dist/
+provision/apks/
+provision/backups/
+dist/
+provision/provision.local.conf
+server/launcher-assets/config/launcher-config.json
+setup/apks/*.apk
+setup/dist/

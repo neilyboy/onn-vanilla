@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Vanilla Home</string>
+    <string name="home_service_desc">Makes the remote\'s Home button open Vanilla Home instead of the stock Google TV home screen.</string>
+</resources>

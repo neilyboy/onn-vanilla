@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "theme": {
+    "name": "midnight",
+    "accent": "",
+    "wallpaper_mode": "gradient",
+    "clock_24h": false
+  },
+  "ui": {
+    "wallpaper_interval_sec": 45,
+    "idle_timeout_sec": 300,
+    "ken_burns": true,
+    "show_weather": true,
+    "show_forecast": true,
+    "show_settings": true,
+    "greeting": ""
+  },
+  "weather": {
+    "latitude": null,
+    "longitude": null,
+    "unit": "fahrenheit",
+    "location_name": ""
+  },
+  "wallpapers": {
+    "manifest_url": ""
+  },
+  "apps": [
+    {
+      "id": "livetv",
+      "label": "Live TV",
+      "package": "tv.vanilla.live",
+      "fallback_packages": [
+        "org.xbmc.kodi"
+      ],
+      "icon": "livetv"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+# Dispatcharr (merges your IPTV providers into one playlist + guide) and an optional
+# web server for launcher-config.json / wallpapers. Run: docker compose up -d
+name: tvstack
+
+services:
+  dispatcharr:
+    image: ghcr.io/dispatcharr/dispatcharr:latest
+    container_name: dispatcharr
+    restart: unless-stopped
+    ports:
+      - "9191:9191"
+    volumes:
+      - ./dispatcharr/data:/data
+    environment:
+      - DISPATCHARR_ENV=aio
+      - REDIS_HOST=localhost
+      - CELERY_BROKER_URL=redis://localhost:6379/0
+      - DISPATCHARR_LOG_LEVEL=info
+      - TZ=${TZ:-UTC}
+
+  # Optional: only needed if you want boxes to re-read a shared config on every start.
+  launcher-assets:
+    image: nginx:alpine
+    container_name: launcher-assets
+    restart: unless-stopped
+    ports:
+      - "9192:80"
+    volumes:
+      - ./launcher-assets:/usr/share/nginx/html:ro

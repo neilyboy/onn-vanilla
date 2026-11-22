@@ -111,6 +111,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        HomeButtonService.visitingStock = false
         idle.value = false
         lastInput.longValue = System.currentTimeMillis()
         lifecycleScope.launch { delay(3_000); HomeButtonService.heal(this@MainActivity) }

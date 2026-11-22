@@ -125,6 +125,29 @@ function renderProfiles() {
   });
 }
 
+function renderSources() {
+  if (!Array.isArray(S.sources)) S.sources = [];
+  if (S.sources.length) $("#sources-box").open = true;
+  $("#sources").innerHTML = S.sources.map((x, i) => `
+    <div class="profile" data-i="${i}">
+      <input type="text" data-f="name" value="${esc(x.name)}" placeholder="Name">
+      <select data-f="type"><option value="xtream" ${x.type !== "m3u" ? "selected" : ""}>Xtream Codes</option><option value="m3u" ${x.type === "m3u" ? "selected" : ""}>M3U link</option></select>
+      <input type="text" data-f="url" value="${esc(x.url)}" placeholder="${x.type === "m3u" ? "M3U link" : "Server, e.g. http://line.example.com:8080"}">
+      ${x.type === "m3u" ? "" : `<input type="text" data-f="username" value="${esc(x.username)}" placeholder="Username" autocomplete="off">
+      <input type="password" data-f="password" value="${esc(x.password)}" placeholder="Password" autocomplete="new-password">`}
+      <input type="text" data-f="epg" value="${esc(x.epg)}" placeholder="Guide (XMLTV) link, optional">
+      <button class="ghost" data-del title="Remove">✕</button>
+    </div>`).join("");
+  $$("#sources .profile").forEach(row => {
+    const x = S.sources[+row.dataset.i];
+    row.querySelectorAll("[data-f]").forEach(el => el.addEventListener(el.tagName === "SELECT" ? "change" : "input", () => {
+      x[el.dataset.f] = el.value.trim(); save();
+      if (el.tagName === "SELECT") renderSources();
+    }));
+    row.querySelector("[data-del]").onclick = () => { S.sources.splice(+row.dataset.i, 1); renderSources(); save(); };
+  });
+}
+
 function renderThemes() {
   $("#themes").innerHTML = Object.entries(THEMES).map(([name, t]) => `
     <div class="theme ${S.theme === name ? "on" : ""}" data-theme="${name}" style="background:${t.bg};color:${t.text}">
@@ -190,6 +213,8 @@ function renderPicked() {
     ? S.teams.map(a => `<span class="chip on" data-a="${esc(a)}">${info[a]?.logo ? `<img src="${esc(info[a].logo)}">` : ""}${esc(info[a]?.name || a)} ✕</span>`).join("")
     : `<span class="muted">None yet. Pick from the list below.</span>`;
   $$("#team-picked .chip").forEach(c => c.onclick = () => { S.teams = S.teams.filter(x => x !== c.dataset.a); renderPicked(); renderTeams(); renderProfiles();
+  renderSources();
+  $("#source-add").onclick = () => { S.sources = [...(S.sources || []), { name: "", type: "xtream", url: "" }]; renderSources(); save(); };
   $("#profile-add").onclick = () => { S.profiles.push({ name: "", sports: false, groups: [], keywords: [] }); renderProfiles(); save(); $("#profiles .profile:last-child input").focus(); };
   $("#profile-reset").onclick = () => { S.profiles = DEFAULT_PROFILES(); renderProfiles(); save(); }; save(); });
 }
@@ -220,16 +245,17 @@ async function inspect() {
     log.classList.add("hidden");
     $("#box-card").innerHTML = `<div class="kv">
       <span>Box</span><span><b>${esc(b.maker)} ${esc(b.model)}</b></span>
-      <span>Android</span><span>${esc(b.android)} (SDK ${esc(b.sdk)})</span>
+      <span>Android</span><span>${esc(b.family)} · Android ${esc(b.android)} (SDK ${esc(b.sdk)})</span>
       <span>Serial</span><span>${esc(b.serial)}</span>
       <span>Status</span><span>${b.setupDone ? "Setup complete" : "⚠ Finish the on-screen setup first"}${b.launcher ? " · Vanilla Home installed" : ""}${b.livetvInstalled ? " · Live TV installed" : ""}</span>
       <span>Your apps</span><span class="muted">${b.userApps.map(esc).join(", ") || "none"}</span></div>`;
     $("#removable").innerHTML = b.removable.length
-      ? b.removable.map(p => `<label><input type="checkbox" value="${esc(p.package)}" checked> ${esc(p.label)} <small>${esc(p.package)}</small></label>`).join("")
+      ? b.removable.map(p => `<label><input type="checkbox" value="${esc(p.package)}" ${b.known ? "checked" : ""}> ${esc(p.label)} <small>${esc(p.package)}</small></label>`).join("")
       : `<span class="muted">Nothing from the removal list is installed.</span>`;
     const mine = b.userApps.filter(p => !p.startsWith("tv.vanilla.") && !b.removable.some(r => r.package === p));
     if (mine.length) $("#removable").innerHTML += `<div class="muted" style="margin-top:10px">Apps you installed (tick to remove):</div>` +
       mine.map(p => `<label><input type="checkbox" value="${esc(p)}"> ${esc(p)}</label>`).join("");
+    if (!b.known) $("#removable").insertAdjacentHTML("afterbegin", `<p class="muted">This device hasn't been tested yet, so nothing is selected. Vanilla Home and Live TV still install, and its own home screen is never removed. Tick only apps you know you don't need.</p>`);
     $("#restore").classList.toggle("hidden", !b.hasBackup);
     $("#box-info").classList.remove("hidden");
   } catch (e) { log.textContent += "\nERROR: " + e.message; }
@@ -333,7 +359,7 @@ async function init() {
   $("#push").onclick = () => run("/api/box/provision", provisionBody({ configOnly: true }));
   $("#export").onclick = () => {
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([JSON.stringify({ onnVanilla: 1, setup: { ...S, xcUser: undefined, xcPass: undefined, haToken: undefined } }, null, 2)], { type: "application/json" }));
+    a.href = URL.createObjectURL(new Blob([JSON.stringify({ onnVanilla: 1, setup: { ...S, xcUser: undefined, xcPass: undefined, haToken: undefined, sources: (S.sources || []).map(s => ({ ...s, password: undefined })) } }, null, 2)], { type: "application/json" }));
     a.download = "onn-vanilla-settings.json";
     a.click();
     URL.revokeObjectURL(a.href);

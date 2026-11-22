@@ -54,6 +54,17 @@ type Setup struct {
 	Boxes           []string       `json:"boxes"`
 	XcUser          string         `json:"xcUser,omitempty"`
 	XcPass          string         `json:"xcPass,omitempty"`
+	Sources         []Source       `json:"sources,omitempty"`
+}
+
+// Source is an extra IPTV service (Xtream Codes login or M3U link) Live TV loads next to Dispatcharr.
+type Source struct {
+	Name     string `json:"name"`
+	Type     string `json:"type"`
+	URL      string `json:"url"`
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
+	EPG      string `json:"epg,omitempty"`
 }
 
 // Profile is a Live TV "who's watching" entry: its groups and guide keywords are shown first.
@@ -186,6 +197,7 @@ func (s Setup) boxConfig() (map[string]any, error) {
 			"profiles":    profiles,
 			"ask_profile": s.AskProfile,
 			"xc":          xcConfig(s),
+			"sources":     s.Sources,
 			"network_aliases": map[string][]string{
 				"Prime Video": {"Prime Video NFL", "Amazon Prime"},
 				"NFL Net":     {"NFL Network"},

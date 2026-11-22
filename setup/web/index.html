@@ -32,6 +32,12 @@
       <label>M3U playlist URL <input data-key="m3u" placeholder="http://…/playlist.m3u"></label>
       <label>XMLTV guide URL <input data-key="epg" placeholder="http://…/epg.xml"></label>
     </details>
+    <details id="sources-box">
+      <summary>Add other IPTV services too <span class="muted">(Xtream Codes or M3U, loaded straight into Live TV next to Dispatcharr)</span></summary>
+      <div id="sources"></div>
+      <button id="source-add">+ Add service</button>
+      <p class="muted">Logins are sent only to your boxes and left out of settings exports. People can also add services on the TV in Live TV → Settings.</p>
+    </details>
     <div class="row"><button id="test" class="primary">Test playlist</button><span id="test-status" class="muted"></span></div>
     <div id="test-result" class="card hidden"></div>
     <details class="card">

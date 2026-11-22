@@ -34,12 +34,12 @@ object Vod {
 
     private fun objs(a: JSONArray) = (0 until a.length()).mapNotNull { a.optJSONObject(it) }
 
-    fun cats(xc: Xc, series: Boolean, adult: Boolean): List<VodCat> = cached("c$series") {
+    fun cats(xc: Xc, series: Boolean, adult: Boolean): List<VodCat> = cached("${xc.base}|${xc.user}|c$series") {
         objs(JSONArray(httpGet(xc.api(if (series) "get_series_categories" else "get_vod_categories"), 30000)))
             .map { VodCat(it.optString("category_id"), it.optString("category_name")) }
     }.filter { adult || !isAdultGroup(it.name) }.sortedBy { isAdultGroup(it.name) }
 
-    fun items(xc: Xc, series: Boolean, catId: String, adult: Boolean): List<VodItem> = cached("i$series:$catId") {
+    fun items(xc: Xc, series: Boolean, catId: String, adult: Boolean): List<VodItem> = cached("${xc.base}|${xc.user}|i$series:$catId") {
         objs(JSONArray(httpGet(xc.api(if (series) "get_series" else "get_vod_streams", "&category_id=$catId"), 60000))).map { o ->
             VodItem(
                 id = o.optString(if (series) "series_id" else "stream_id"),
@@ -97,7 +97,7 @@ object Vod {
         return out
     }
 
-    fun episodes(xc: Xc, seriesId: String): List<Episode> = cached("e$seriesId") {
+    fun episodes(xc: Xc, seriesId: String): List<Episode> = cached("${xc.base}|${xc.user}|e$seriesId") {
         val root = JSONObject(httpGet(xc.api("get_series_info", "&series_id=$seriesId"), 30000))
         val eps = root.opt("episodes")
         val all = when (eps) {

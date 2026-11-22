@@ -118,7 +118,7 @@ fun LauncherScreen(
         Column(Modifier.fillMaxSize().padding(horizontal = 56.dp, vertical = 40.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                 AnimatedVisibility(visible = cfg.showSettings && !idle, enter = fadeIn(), exit = fadeOut()) {
-                    IconTile(Icons.Outlined.Settings, theme, size = 42.dp, onClick = onSettings, onLongClick = { showSetup = true })
+                    IconTile(Icons.Outlined.Settings, theme, size = 42.dp, onClick = { showSetup = true }, onLongClick = onSettings)
                 }
                 Spacer(Modifier.weight(1f))
                 Column(horizontalAlignment = Alignment.End) {
@@ -155,7 +155,7 @@ fun LauncherScreen(
             }
         }
 
-        if (showSetup) SetupDialog(activity, theme) { showSetup = false }
+        if (showSetup) SetupDialog(activity, theme, onSettings) { showSetup = false }
         if (showPicker) AppPickerDialog(activity, theme) { picked ->
             showPicker = false
             if (picked != null) activity.setDock(apps + picked)
@@ -383,29 +383,42 @@ private fun AppIcon(app: AppEntry, activity: MainActivity) {
 }
 
 @Composable
-private fun SetupDialog(activity: MainActivity, theme: VanillaTheme, onDismiss: () -> Unit) {
+private fun SetupDialog(activity: MainActivity, theme: VanillaTheme, onAndroidSettings: () -> Unit, onDismiss: () -> Unit) {
     var url by remember { mutableStateOf(activity.currentConfigUrl()) }
+    var released by remember { mutableStateOf(HomeButtonService.released(activity)) }
+    val stock = remember { HomeButtonService.stockHome(activity) }
+    val stockName = remember(stock) {
+        stock?.let { runCatching { activity.packageManager.getApplicationLabel(activity.packageManager.getApplicationInfo(it.packageName, 0)).toString() }.getOrNull() } ?: "original home"
+    }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
     Dialog(onDismissRequest = onDismiss) {
         Column(
-            Modifier.width(640.dp).clip(RoundedCornerShape(24.dp)).background(Color(0xF0181A20)).padding(32.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            Modifier.width(640.dp).clip(RoundedCornerShape(24.dp)).background(Color(0xF0181A20)).padding(28.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text("Launcher config URL", color = Color.White, fontSize = 22.sp)
+            Text("Vanilla Home", color = Color.White, fontSize = 22.sp)
+            MenuRow("Android settings", theme, Modifier.focusRequester(focus)) { onDismiss(); onAndroidSettings() }
+            if (stock != null) MenuRow("Open $stockName", theme) { onDismiss(); HomeButtonService.openStockHome(activity) }
+            MenuRow(if (released) "Home button: $stockName  (switch to Vanilla Home)" else "Home button: Vanilla Home  (give back to $stockName)", theme) {
+                released = !released
+                HomeButtonService.setReleased(activity, released)
+            }
+            if (released) Text("The Home button now opens $stockName. Open Vanilla Home from its app tile, or switch back here.", color = Color(0xB3FFFFFF), fontSize = 13.sp)
+            Spacer(Modifier.height(8.dp))
+            Text("Launcher config URL", color = Color(0xB3FFFFFF), fontSize = 14.sp)
             BasicTextField(
                 value = url,
                 onValueChange = { url = it },
                 singleLine = true,
-                textStyle = TextStyle(color = Color.White, fontSize = 18.sp),
+                textStyle = TextStyle(color = Color.White, fontSize = 16.sp),
                 cursorBrush = SolidColor(theme.accent),
-                modifier = Modifier.fillMaxWidth().focusRequester(focus)
-                    .border(1.dp, theme.accent, RoundedCornerShape(10.dp)).padding(14.dp),
+                modifier = Modifier.fillMaxWidth().border(1.dp, theme.accent, RoundedCornerShape(10.dp)).padding(12.dp),
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(top = 8.dp)) {
                 Button(onClick = { activity.setConfigUrl(url); onDismiss() }) { Text("Save & reload") }
                 Button(onClick = { activity.refreshNow(); onDismiss() }) { Text("Reload") }
-                Button(onClick = onDismiss) { Text("Cancel") }
+                Button(onClick = onDismiss) { Text("Close") }
             }
         }
     }

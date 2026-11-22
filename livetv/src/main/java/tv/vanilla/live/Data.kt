@@ -91,7 +91,41 @@ data class LiveConfig(
     val profiles: List<Profile> = DEFAULT_PROFILES,
     val askProfile: Boolean = false,
     val xc: Xc? = null,
-)
+    /** Extra IPTV sources: added on the TV or sent by the setup app. */
+    val sources: List<Source> = emptyList(),
+) {
+    /** Every playlist to load: Dispatcharr (if set) first, then the extra sources. */
+    fun feeds(): List<Feed> = listOfNotNull(
+        m3uUrl.takeIf { it.isNotBlank() }?.let { Feed("Dispatcharr", it, epgUrl.ifBlank { it.replace("/output/m3u", "/output/epg") }, null) }
+    ) + sources.map { Feed(it.name, it.m3u(), it.epgUrl(), it.name) }
+
+    /** Movies & Series providers: Dispatcharr's Xtream login, then any Xtream sources. */
+    val vodSources: List<Pair<String, Xc>> get() = listOfNotNull(xc?.let { "Dispatcharr" to it }) + sources.mapNotNull { s -> s.xc()?.let { s.name to it } }
+}
+
+/** One playlist + guide. [prefix] labels its groups when channels from several sources are mixed. */
+data class Feed(val name: String, val m3u: String, val epg: String, val prefix: String?)
+
+data class Source(val name: String, val kind: String, val url: String, val user: String = "", val pass: String = "", val epg: String = "", val fromSetup: Boolean = false) {
+    private fun enc(v: String) = java.net.URLEncoder.encode(v, "UTF-8")
+    private val base get() = url.trim().trimEnd('/')
+    fun xc(): Xc? = if (kind == "xtream") Xc(base, user, pass) else null
+    fun m3u() = if (kind == "xtream") "$base/get.php?username=${enc(user)}&password=${enc(pass)}&type=m3u_plus&output=ts" else url.trim()
+    fun epgUrl() = epg.trim().ifBlank { if (kind == "xtream") "$base/xmltv.php?username=${enc(user)}&password=${enc(pass)}" else "" }
+    fun toJson(): JSONObject = JSONObject().put("name", name).put("type", kind).put("url", url).put("username", user).put("password", pass).put("epg", epg)
+
+    companion object {
+        fun fromJson(o: JSONObject, fromSetup: Boolean = false): Source? {
+            val kind = if (o.optString("type").equals("m3u", true)) "m3u" else "xtream"
+            val url = o.optString("url").trim()
+            if (url.isBlank() || (kind == "xtream" && (o.optString("username").isBlank() || o.optString("password").isBlank()))) return null
+            val name = o.optString("name").trim().ifBlank { Regex("^https?://([^/:]+)").find(url)?.groupValues?.get(1) ?: "IPTV" }
+            return Source(name, kind, url, o.optString("username").trim(), o.optString("password").trim(), o.optString("epg").trim(), fromSetup)
+        }
+        fun list(a: org.json.JSONArray?, fromSetup: Boolean = false) =
+            a?.let { (0 until it.length()).mapNotNull { i -> it.optJSONObject(i)?.let { o -> fromJson(o, fromSetup) } } } ?: emptyList()
+    }
+}
 
 val LEAGUE_PATHS = mapOf(
     "nfl" to "football/nfl",
@@ -355,6 +389,11 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("resume_last", false)
         set(v) = prefs.edit().putBoolean("resume_last", v).apply()
 
+    /** IPTV sources added on this TV. */
+    var sources: List<Source>
+        get() = Source.list(runCatching { org.json.JSONArray(prefs.getString("sources", "[]")) }.getOrNull())
+        set(v) = prefs.edit().putString("sources", org.json.JSONArray(v.map { it.toJson() }).toString()).apply()
+
     fun recentsFor(p: String): List<String> = (prefs.getString("recent:$p", "") ?: "").split('\n').filter { it.isNotBlank() }
     fun pushRecent(p: String, name: String) {
         val l = (listOf(name) + recentsFor(p).filter { it != name }).take(15)
@@ -382,6 +421,7 @@ fun parseLiveConfig(text: String?, settings: Settings): LiveConfig {
             val u = o.optString("username"); val p = o.optString("password")
             if (base.isBlank() || u.isBlank() || p.isBlank()) null else Xc(base.trimEnd('/'), u, p)
         },
+        sources = (Source.list(live.optJSONArray("sources"), fromSetup = true) + settings.sources).distinctBy { it.m3u() },
         profiles = live.optJSONArray("profiles")?.let { a ->
             (0 until a.length()).mapNotNull { i -> a.optJSONObject(i) }.map { o ->
                 fun arr(k: String) = o.optJSONArray(k)?.let { x -> (0 until x.length()).map { x.getString(it) } } ?: emptyList()
@@ -411,8 +451,19 @@ object Repo {
 
     fun playlistAgeMs(ctx: Context) = chanCache(ctx).let { if (it.exists()) System.currentTimeMillis() - it.lastModified() else Long.MAX_VALUE }
 
-    fun loadPlaylist(ctx: Context, url: String): List<Channel> {
-        val list = parseM3u(httpGet(url, 20000))
+    fun feedsKey(feeds: List<Feed>) = feeds.joinToString("|") { it.m3u }
+
+    /** Loads every feed and merges them; a feed that fails is skipped unless all of them do. */
+    fun loadPlaylist(ctx: Context, feeds: List<Feed>): List<Channel> {
+        val mixed = feeds.size > 1
+        val parts = feeds.map { f ->
+            runCatching { parseM3u(httpGet(f.m3u, 20000)) }.getOrNull()?.let { l ->
+                if (mixed && f.prefix != null) l.map { it.copy(group = "${f.prefix} · ${it.group}") } else l
+            }
+        }
+        if (parts.all { it == null }) error("no playlist reachable")
+        val list = parts.filterNotNull().flatten().mapIndexed { i, c -> c.copy(index = i) }
+        val url = feedsKey(feeds)
         runCatching {
             val tmp = File(cacheDir(ctx), "channels.tsv.tmp")
             tmp.bufferedWriter().use { w ->
@@ -428,14 +479,21 @@ object Repo {
 
     fun epgAgeMs(ctx: Context) = epgCache(ctx).let { if (it.exists()) System.currentTimeMillis() - it.lastModified() else Long.MAX_VALUE }
 
-    fun loadEpg(ctx: Context, url: String, chans: List<Channel>) {
+    fun loadEpg(ctx: Context, urls: List<String>, chans: List<Channel>) {
         val wanted = chans.map { it.tvgId }.filter { it.isNotBlank() }.toSet()
-        runCatching {
-            val (conn, s) = httpOpen(url, 20000)
-            val fresh = try { parseEpg(s, wanted) } finally { conn.disconnect() }
-            epg = fresh
-            runCatching { saveEpg(ctx, fresh) }
+        val merged = HashMap<String, List<Programme>>()
+        var any = false
+        urls.filter { it.isNotBlank() }.distinct().forEach { url ->
+            runCatching {
+                val (conn, s) = httpOpen(url, 20000)
+                val fresh = try { parseEpg(s, wanted) } finally { conn.disconnect() }
+                fresh.forEach { (k, v) -> merged.putIfAbsent(k, v) }
+                any = true
+            }
         }
+        if (!any) return
+        epg = merged
+        runCatching { saveEpg(ctx, merged) }
     }
 
     private fun clean(s: String) = s.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ')

@@ -111,11 +111,12 @@ fun LiveApp(a: MainActivity) {
     val d = LocalDensity.current
     CompositionLocalProvider(LocalDensity provides Density(d.density * look.scale * BASE_SCALE, d.fontScale * look.text)) {
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(lerp(Palette.bg, Color.White, 0.04f), Palette.bg, Palette.bg)))) {
+        a.sourceForm.value?.let { SourceForm(a, it, accent) }
         if (a.status.value == "setup") { SetupScreen(a, accent); return@Box }
         a.pinFor.value?.let { p -> PinPad("Enter PIN for ${p.name}", p.pin.length, accent, a::unlock) { a.pinFor.value = null }; return@Box }
         if (a.showPicker.value) { ProfilePicker(a); return@Box }
         Column(Modifier.fillMaxSize()) {
-            val tabs = Tab.entries.filter { c?.xc != null || (it != Tab.Movies && it != Tab.Series) }
+            val tabs = Tab.entries.filter { c?.vodSources?.isNotEmpty() == true || (it != Tab.Movies && it != Tab.Series) }
             TopBar(tabs, tab, accent, a.profile.value, a.profileIndex(), tabReq, { topFocused = it }, { a.cycleProfile() }) { tab = it }
             val s = a.status.value
             if (s.isNotBlank()) Text(s, color = Palette.sub, fontSize = 16.sp, modifier = Modifier.padding(horizontal = 48.dp, vertical = 4.dp))
@@ -125,8 +126,8 @@ fun LiveApp(a: MainActivity) {
                     Tab.Sports -> SportsTab(a, c, accent)
                     Tab.Guide -> GuideTab(a, c, accent)
                     Tab.Favorites -> GuideTab(a, c, accent, favoritesOnly = true)
-                    Tab.Movies -> c?.xc?.let { VodTab(a, it, false, accent) }
-                    Tab.Series -> c?.xc?.let { VodTab(a, it, true, accent) }
+                    Tab.Movies -> c?.vodSources?.takeIf { it.isNotEmpty() }?.let { VodSources(a, it, false, accent) }
+                    Tab.Series -> c?.vodSources?.takeIf { it.isNotEmpty() }?.let { VodSources(a, it, true, accent) }
                     Tab.Search -> SearchTab(a, accent)
                     Tab.Settings -> LookTab(a, accent)
                 }
@@ -683,6 +684,12 @@ private fun SetupScreen(a: MainActivity, accent: Color) {
             a.settings.epgOverride = "$base/output/epg"
             a.reload(true)
         }) { Text("Connect") }
+        Spacer(Modifier.height(12.dp))
+        Text("No Dispatcharr? Add your IPTV service directly:", color = Palette.sub, fontSize = 18.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Button(onClick = { a.sourceForm.value = "xtream" }) { Text("Xtream Codes login") }
+            Button(onClick = { a.sourceForm.value = "m3u" }) { Text("M3U playlist") }
+        }
     }
 }
 
@@ -797,6 +804,7 @@ private fun LookTab(a: MainActivity, accent: Color) {
     val l = a.look.value
     val first = remember { FocusRequester() }
     val pct = { f: Float -> "${(f * 100).toInt()}%" }
+    val armed = remember { mutableStateOf<String?>(null) }
     LazyColumn(contentPadding = PaddingValues(horizontal = 48.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item { Text("Appearance", color = Palette.text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold); Text("Press OK to change. Saved on this TV.", color = Palette.sub, fontSize = 14.sp) }
         item { LookRow("Who's watching", a.profile.value.name, accent, Modifier.focusRequester(first)) { a.cycleProfile() } }
@@ -821,7 +829,8 @@ private fun LookTab(a: MainActivity, accent: Color) {
         item { LookRow("Open on last channel", if (a.resumeLast.value) "On" else "Off", accent) { a.toggleResumeLast() } }
         item { LookRow("Reset appearance", "", accent) { a.setLook(Look()) } }
         item { LookRow("Reload playlist & guide", "", accent) { a.reload(true) } }
-        item { Text("${a.channels.value.size} channels · ${a.config.value?.m3uUrl ?: ""}", color = Palette.sub, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp)) }
+        item { Text("${a.channels.value.size} channels · ${a.config.value?.feeds()?.joinToString(", ") { it.name } ?: ""}", color = Palette.sub, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp)) }
+        sourceRows(a, accent, armed) { label, value, onClick -> LookRow(label, value, accent, onClick = onClick) }
     }
 }
 
@@ -844,6 +853,26 @@ private fun LookRow(label: String, value: String, accent: Color, modifier: Modif
 }
 
 // ---------------------------------------------------------------- Movies & Series
+
+/** Movies/Series for one provider at a time, with a chip row to switch when there are several. */
+@Composable
+private fun VodSources(a: MainActivity, list: List<Pair<String, Xc>>, series: Boolean, accent: Color) {
+    var pick by remember { mutableIntStateOf(0) }
+    val i = pick.coerceIn(0, list.size - 1)
+    Column(Modifier.fillMaxSize()) {
+        if (list.size > 1) LazyRow(contentPadding = PaddingValues(horizontal = 48.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            itemsIndexed(list) { n, (name, _) ->
+                Surface(
+                    onClick = { pick = n },
+                    shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
+                    colors = ClickableSurfaceDefaults.colors(containerColor = if (n == i) accent.copy(alpha = 0.35f) else Palette.card, focusedContainerColor = Palette.text, contentColor = Palette.text, focusedContentColor = Palette.bg),
+                    scale = ClickableSurfaceDefaults.scale(focusedScale = 1.04f),
+                ) { Text(name, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) }
+            }
+        }
+        key(list[i].second) { VodTab(a, list[i].second, series, accent) }
+    }
+}
 
 @Composable
 private fun VodTab(a: MainActivity, xc: Xc, series: Boolean, accent: Color) {

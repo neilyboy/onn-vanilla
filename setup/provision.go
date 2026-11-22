@@ -34,6 +34,33 @@ type BoxInfo struct {
 	UserApps  []string   `json:"userApps"`
 	HasBackup bool       `json:"hasBackup"`
 	PlayStore bool       `json:"playStore"`
+	Family    string     `json:"family"`
+	Known     bool       `json:"known"`
+	Homes     []string   `json:"homes"`
+}
+
+// knownDevice reports devices whose removal list has been tested; others get nothing pre-selected.
+func knownDevice(maker, model string) bool {
+	m := strings.ToLower(maker + " " + model)
+	return strings.Contains(m, "onn")
+}
+
+// homeApps lists every installed home screen except Vanilla Home, so none of them is ever removed.
+func homeApps(a ADB) []string {
+	out, _ := a.sh("cmd", "package", "query-activities", "--brief", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.HOME")
+	seen := map[string]bool{}
+	var homes []string
+	for _, l := range strings.Split(out, "\n") {
+		l = strings.TrimSpace(l)
+		if i := strings.Index(l, "/"); i > 0 && !strings.Contains(l, " ") {
+			p := l[:i]
+			if p != launcherPkg && !seen[p] {
+				seen[p] = true
+				homes = append(homes, p)
+			}
+		}
+	}
+	return homes
 }
 
 func inspect(a ADB) (BoxInfo, error) {
@@ -55,6 +82,18 @@ func inspect(a ADB) (BoxInfo, error) {
 		}
 	}
 	info.Launcher, info.LiveTV, info.PlayStore = pkgs[launcherPkg], pkgs[livetvPkg], pkgs["com.android.vending"]
+	switch {
+	case pkgs["com.google.android.apps.tv.launcherx"]:
+		info.Family = "Google TV"
+	case pkgs["com.google.android.tvlauncher"] || pkgs["com.google.android.leanbacklauncher"]:
+		info.Family = "Android TV"
+	case pkgs["com.amazon.tv.launcher"]:
+		info.Family = "Fire TV"
+	default:
+		info.Family = "Android"
+	}
+	info.Known = knownDevice(info.Maker, info.Model)
+	info.Homes = homeApps(a)
 	user, _ := packages(a, "-3")
 	for p := range user {
 		info.UserApps = append(info.UserApps, p)
@@ -170,7 +209,7 @@ func provision(o ProvisionOpts, s Setup, log logger) error {
 				allowed[p] = true
 			}
 		}
-		for _, p := range neverRemove {
+		for _, p := range append(append([]string{}, neverRemove...), info.Homes...) {
 			allowed[p] = false
 		}
 		present, _ := packages(a, "")

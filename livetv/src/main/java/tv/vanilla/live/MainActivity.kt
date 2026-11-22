@@ -186,6 +186,18 @@ class MainActivity : ComponentActivity() {
         Palette.apply(l)
         l.save(this)
     }
+    /** "xtream" or "m3u" while the add-source form is open. */
+    val sourceForm = mutableStateOf<String?>(null)
+
+    fun addSource(src: Source) {
+        settings.sources = settings.sources.filter { it.m3u() != src.m3u() } + src
+        reload(true)
+    }
+
+    fun removeSource(src: Source) {
+        settings.sources = settings.sources.filter { it.m3u() != src.m3u() }
+        reload(true)
+    }
     private var pendingTune: String? = null
     private var pendingVod: String? = null
     val openSeries = mutableStateOf<VodItem?>(null)
@@ -193,7 +205,7 @@ class MainActivity : ComponentActivity() {
     /** "m:<id>" plays a movie, "s:<id>" opens a series; both come from the home screen's "New on" widget. */
     private fun openPendingVod() {
         val v = pendingVod ?: return
-        val xc = config.value?.xc ?: return
+        val xc = config.value?.let { it.xc ?: it.vodSources.firstOrNull()?.second } ?: return
         pendingVod = null
         val item = runCatching { org.json.JSONObject(Glance.file(this).readText()).optJSONArray("newVod") }.getOrNull()?.let { a ->
             (0 until a.length()).mapNotNull { a.optJSONObject(it) }.firstOrNull { (if (it.optBoolean("series")) "s:" else "m:") + it.optString("id") == v }
@@ -280,20 +292,22 @@ class MainActivity : ComponentActivity() {
             val c = parseLiveConfig(cfgText, settings)
             config.value = c
             openPendingVod()
-            c.xc?.let { refreshNewVod(it) }
+            (c.xc ?: c.vodSources.firstOrNull()?.second)?.let { refreshNewVod(it) }
             Repo.leagues = c.leagues; Repo.favTeams = c.favoriteTeams; Repo.aliases = c.networkAliases
             setProfile(c.profiles.firstOrNull { it.name == settings.profile } ?: c.profiles.first())
             if (!askedProfile && c.askProfile && c.profiles.size > 1) { askedProfile = true; showPicker.value = true }
             val l = Look.load(this@MainActivity) ?: Look.fromJson(runCatching { org.json.JSONObject(cfgText ?: "{}").optJSONObject("livetv")?.optJSONObject("look") }.getOrNull())
             look.value = l; Palette.apply(l)
-            if (c.m3uUrl.isBlank()) {
+            val feeds = c.feeds()
+            val feedsKey = Repo.feedsKey(feeds)
+            if (feeds.isEmpty()) {
                 status.value = "setup"
                 return@launch
             }
             // Show the last lineup and guide right away, then refresh from the server.
             val t0 = System.currentTimeMillis()
             fun mark(what: String) = android.util.Log.i("VanillaLive", "$what at ${System.currentTimeMillis() - t0} ms")
-            val cached = withContext(Dispatchers.IO) { Repo.loadCachedPlaylist(this@MainActivity, c.m3uUrl); Repo.channels }
+            val cached = withContext(Dispatchers.IO) { Repo.loadCachedPlaylist(this@MainActivity, feedsKey); Repo.channels }
             if (cached.isNotEmpty()) { channels.value = cached; status.value = ""; mark("cached playlist ${cached.size}") }
             if (cached.isNotEmpty() && Repo.epg.isEmpty()) {
                 withContext(Dispatchers.IO) { Repo.loadCachedEpg(this@MainActivity) }
@@ -302,9 +316,9 @@ class MainActivity : ComponentActivity() {
             }
             launch { games.value = withContext(Dispatchers.IO) { fetchGames(c.leagues) } }
             val stale = force || cached.isEmpty() || Repo.playlistAgeMs(this@MainActivity) > 3_600_000L
-            val list = if (!stale) null else withContext(Dispatchers.IO) { runCatching { Repo.loadPlaylist(this@MainActivity, c.m3uUrl) }.getOrNull() }
+            val list = if (!stale) null else withContext(Dispatchers.IO) { runCatching { Repo.loadPlaylist(this@MainActivity, feeds) }.getOrNull() }
             if (list == null && cached.isEmpty()) {
-                status.value = "Can't reach playlist: ${c.m3uUrl}"
+                status.value = "Can't reach ${feeds.joinToString(" or ") { it.name }}"
                 return@launch
             }
             mark("playlist ${list?.size}")
@@ -313,9 +327,9 @@ class MainActivity : ComponentActivity() {
                 status.value = if (list.isEmpty()) "Playlist is empty — add channels in Dispatcharr" else ""
             }
             val chans = channels.value
-            val epgUrl = c.epgUrl.ifBlank { c.m3uUrl.replace("/output/m3u", "/output/epg") }
+            val epgUrls = feeds.map { it.epg }
             if (force || Repo.epg.isEmpty() || Repo.epgAgeMs(this@MainActivity) > 2 * 3_600_000L || (list != null && list.size != cached.size)) {
-                withContext(Dispatchers.IO) { Repo.loadEpg(this@MainActivity, epgUrl, chans) }
+                withContext(Dispatchers.IO) { Repo.loadEpg(this@MainActivity, epgUrls, chans) }
                 epg.value = Repo.epg
                 writeGlance()
                 mark("guide ${Repo.epg.size}")

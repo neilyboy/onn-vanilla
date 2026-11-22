@@ -23,6 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -118,6 +119,7 @@ fun SourceForm(a: MainActivity, kind: String, accent: Color) {
     var msg by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     val first = remember { FocusRequester() }
+    val save = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) { delay(150); runCatching { first.requestFocus() } }
     androidx.compose.ui.window.Dialog(onDismissRequest = { a.sourceForm.value = null }, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
@@ -133,10 +135,10 @@ fun SourceForm(a: MainActivity, kind: String, accent: Color) {
                 TvField("Username", user, accent) { user = it }
                 TvField("Password", pass, accent, secret = true) { pass = it }
             }
-            TvField("Guide (XMLTV) link, optional", epg, accent) { epg = it }
+            TvField("Guide (XMLTV) link, optional", epg, accent, modifier = Modifier.focusProperties { down = save }) { epg = it }
             if (msg.isNotBlank()) Text(msg, color = if (busy) Palette.sub else Color(0xFFFF8A80), fontSize = 14.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.padding(top = 6.dp)) {
-                Button(enabled = !busy, onClick = {
+                Button(enabled = !busy, modifier = Modifier.focusRequester(save), onClick = {
                     val o = org.json.JSONObject().put("name", name).put("type", kind).put("url", url).put("username", user).put("password", pass).put("epg", epg)
                     val src = Source.fromJson(o) ?: run { msg = if (xtream) "Fill in the server, username and password." else "Fill in the M3U link."; return@Button }
                     busy = true; msg = "Checking…"

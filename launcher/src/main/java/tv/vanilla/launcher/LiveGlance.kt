@@ -42,6 +42,8 @@ fun readGlance(ctx: Context): LiveGlance? = runCatching {
 fun openLive(ctx: Context, extra: String? = null, value: String? = null) {
     val i = ctx.packageManager.getLaunchIntentForPackage(LIVE_PKG)
         ?: ctx.packageManager.getLeanbackLaunchIntentForPackage(LIVE_PKG) ?: return
-    if (extra != null && value != null) i.putExtra(extra, value)
-    runCatching { ctx.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    // Bring Live TV's main screen forward (closing a player left open) so it receives the deep link.
+    if (extra != null && value != null) i.putExtra(extra, value).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+    runCatching { ctx.startActivity(i) }
 }

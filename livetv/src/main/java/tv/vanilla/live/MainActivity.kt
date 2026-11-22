@@ -227,9 +227,9 @@ class MainActivity : ComponentActivity() {
         resumeLast.value = settings.resumeLast
         reminders.value = settings.reminders
         ticker.intValue = settings.ticker
-        applyIntent(intent)
+        val fresh = applyIntent(intent)
         setContent { LiveApp(this) }
-        reload()
+        reload(fresh)
         lifecycleScope.launch {
             while (true) {
                 config.value?.let { c -> games.value = withContext(Dispatchers.IO) { fetchGames(c.leagues) }; Repo.games = games.value }
@@ -242,7 +242,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        if (applyIntent(intent)) reload() else { pendingTune?.let { tryTune() }; openPendingVod() }
+        if (applyIntent(intent)) reload(true) else { pendingTune?.let { tryTune() }; openPendingVod() }
     }
 
     /**
@@ -267,7 +267,8 @@ class MainActivity : ComponentActivity() {
         return changed
     }
 
-    fun reload() {
+    /** [force] skips the cached lineup and guide, e.g. after new settings or a manual reload. */
+    fun reload(force: Boolean = false) {
         lifecycleScope.launch {
             status.value = "Loading…"
             val cfgFile = File(filesDir, "config.json")
@@ -300,7 +301,7 @@ class MainActivity : ComponentActivity() {
                 mark("cached guide ${Repo.epg.size}")
             }
             launch { games.value = withContext(Dispatchers.IO) { fetchGames(c.leagues) } }
-            val stale = cached.isEmpty() || Repo.playlistAgeMs(this@MainActivity) > 3_600_000L
+            val stale = force || cached.isEmpty() || Repo.playlistAgeMs(this@MainActivity) > 3_600_000L
             val list = if (!stale) null else withContext(Dispatchers.IO) { runCatching { Repo.loadPlaylist(this@MainActivity, c.m3uUrl) }.getOrNull() }
             if (list == null && cached.isEmpty()) {
                 status.value = "Can't reach playlist: ${c.m3uUrl}"
@@ -313,7 +314,7 @@ class MainActivity : ComponentActivity() {
             }
             val chans = channels.value
             val epgUrl = c.epgUrl.ifBlank { c.m3uUrl.replace("/output/m3u", "/output/epg") }
-            if (Repo.epg.isEmpty() || Repo.epgAgeMs(this@MainActivity) > 2 * 3_600_000L || (list != null && list.size != cached.size)) {
+            if (force || Repo.epg.isEmpty() || Repo.epgAgeMs(this@MainActivity) > 2 * 3_600_000L || (list != null && list.size != cached.size)) {
                 withContext(Dispatchers.IO) { Repo.loadEpg(this@MainActivity, epgUrl, chans) }
                 epg.value = Repo.epg
                 writeGlance()

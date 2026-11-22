@@ -681,7 +681,7 @@ private fun SetupScreen(a: MainActivity, accent: Color) {
             val base = server.trim().trimEnd('/')
             a.settings.m3uOverride = "$base/output/m3u"
             a.settings.epgOverride = "$base/output/epg"
-            a.reload()
+            a.reload(true)
         }) { Text("Connect") }
     }
 }
@@ -820,7 +820,7 @@ private fun LookTab(a: MainActivity, accent: Color) {
         item { LookRow("Score bar while watching", listOf("Off", "Favorite teams", "All live games")[a.ticker.intValue.coerceIn(0, 2)], accent) { a.cycleTicker() } }
         item { LookRow("Open on last channel", if (a.resumeLast.value) "On" else "Off", accent) { a.toggleResumeLast() } }
         item { LookRow("Reset appearance", "", accent) { a.setLook(Look()) } }
-        item { LookRow("Reload playlist & guide", "", accent) { a.reload() } }
+        item { LookRow("Reload playlist & guide", "", accent) { a.reload(true) } }
         item { Text("${a.channels.value.size} channels · ${a.config.value?.m3uUrl ?: ""}", color = Palette.sub, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp)) }
     }
 }

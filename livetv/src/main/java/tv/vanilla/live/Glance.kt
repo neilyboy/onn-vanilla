@@ -43,18 +43,18 @@ object Glance {
         channels.filter { it.group.contains("camera", ignoreCase = true) }.take(12).forEach { cams.put(JSONObject().put("name", it.name).put("logo", it.logo)) }
         val old = runCatching { JSONObject(file(ctx).readText()) }.getOrNull()
         val root = JSONObject().put("profile", profile).put("at", now).put("onNow", onNow).put("games", ga).put("resume", ra).put("cameras", cams)
-            .put("newVod", old?.optJSONArray("newVod") ?: JSONArray()).put("newVodAt2", old?.optLong("newVodAt2") ?: 0L)
+            .put("newVod", old?.optJSONArray("newVod") ?: JSONArray()).put("newVodAt3", old?.optLong("newVodAt3") ?: 0L)
         val tmp = File(ctx.filesDir, "glance.json.tmp")
         tmp.writeText(root.toString())
         tmp.renameTo(file(ctx))
     }
 
     fun newVodAge(ctx: android.content.Context) =
-        System.currentTimeMillis() - (runCatching { JSONObject(file(ctx).readText()).optLong("newVodAt2") }.getOrNull() ?: 0L)
+        System.currentTimeMillis() - (runCatching { JSONObject(file(ctx).readText()).optLong("newVodAt3") }.getOrNull() ?: 0L)
 
     fun writeNewVod(ctx: android.content.Context, items: JSONArray) = runCatching {
         val root = runCatching { JSONObject(file(ctx).readText()) }.getOrDefault(JSONObject())
-        root.put("newVod", items).put("newVodAt2", System.currentTimeMillis())
+        root.put("newVod", items).put("newVodAt3", System.currentTimeMillis())
         val tmp = File(ctx.filesDir, "glance.json.tmp")
         tmp.writeText(root.toString())
         tmp.renameTo(file(ctx))

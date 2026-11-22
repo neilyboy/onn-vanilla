@@ -230,8 +230,9 @@ private fun NewsCards(items: List<Headline>, theme: VanillaTheme, wide: Boolean)
         Title("Headlines", theme)
         Crossfade(lead, label = "lead") { h ->
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (h.image.isNotBlank()) {
-                    AsyncImage(h.image, null, contentScale = ContentScale.Crop, modifier = Modifier.size(if (wide) 200.dp else 112.dp, if (wide) 112.dp else 63.dp).clip(RoundedCornerShape(10.dp)))
+                var shown by remember(h.image) { mutableStateOf(true) }
+                if (h.image.isNotBlank() && shown) {
+                    AsyncImage(h.image, null, contentScale = ContentScale.Crop, onError = { shown = false }, modifier = Modifier.size(if (wide) 200.dp else 112.dp, if (wide) 112.dp else 63.dp).clip(RoundedCornerShape(10.dp)))
                     Spacer(Modifier.width(12.dp))
                 }
                 Column {

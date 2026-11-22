@@ -24,6 +24,8 @@ private fun JSONObject.str(k: String) = optString(k).takeIf { it.isNotBlank() &&
 /** Categories left out of "New on": other-language sections, sports replays and unsorted dumps. */
 private val NOT_NEW = Regex("""^(?!US\b|UK\b|EN\b)[A-Z]{2} [|-]|(?i)bollywood|korean|anime sub|replays|unsorted|unlabeled|uncategori[sz]ed""")
 
+private val NEW_CATS = Regex("""(?i)\b20\d\d\b|releases|most popular|new\b|recent|usa selection|netflix|disney|prime|apple tv|hulu|hbo|paramount|peacock""")
+
 object Vod {
     private val cache = HashMap<String, Any>()
 
@@ -55,7 +57,10 @@ object Vod {
 
     /** The [n] most recently added movies or series (non-adult), streamed so the full catalog never sits in memory. */
     fun newest(xc: Xc, series: Boolean, n: Int = 12): JSONArray {
-        val adultCats = runCatching { cats(xc, series, true).filter { isAdultGroup(it.name) || NOT_NEW.containsMatchIn(it.name) }.map { it.id }.toSet() }.getOrDefault(emptySet())
+        val all = runCatching { cats(xc, series, true) }.getOrDefault(emptyList()).filter { !isAdultGroup(it.name) && !NOT_NEW.containsMatchIn(it.name) }
+        // Providers' "2026 Releases" / "Most Popular" / streaming-service sections beat raw upload dates, which are mostly foreign back catalog.
+        val fresh = all.filter { NEW_CATS.containsMatchIn(it.name) }.map { it.id }.toSet()
+        val allowed = fresh.ifEmpty { all.map { it.id }.toSet() }
         val top = java.util.PriorityQueue<Pair<Long, JSONObject>>(compareBy { it.first })
         val conn = java.net.URL(xc.api(if (series) "get_series" else "get_vod_streams")).openConnection() as java.net.HttpURLConnection
         conn.connectTimeout = 15000; conn.readTimeout = 120000
@@ -82,7 +87,7 @@ object Vod {
                     }
                 }
                 r.endObject()
-                if (adult || cat in adultCats || isAdultGroup(name) || poster.isBlank() || id.isBlank()) continue
+                if (adult || cat !in allowed || isAdultGroup(name) || poster.isBlank() || id.isBlank() || name.any { it.code > 0xFF }) continue
                 top.add(added to JSONObject().put("id", id).put("title", name).put("poster", poster).put("ext", ext).put("year", year).put("series", series))
                 if (top.size > n) top.poll()
             }

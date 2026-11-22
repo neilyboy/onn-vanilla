@@ -34,6 +34,11 @@
             android:screenOrientation="landscape"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenLayout|screenSize|uiMode" />
         <activity
+            android:name=".MultiviewActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenLayout|screenSize|uiMode" />
+        <activity
             android:name=".VodPlayerActivity"
             android:exported="false"
             android:screenOrientation="landscape"

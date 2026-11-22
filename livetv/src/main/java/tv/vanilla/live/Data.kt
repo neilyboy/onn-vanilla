@@ -268,26 +268,37 @@ private fun containsToken(haystack: String, needle: String): Boolean {
  * Best channel for a game. Network channels (ESPN, FOX…) come first because they are merged across providers
  * with backups; single-provider event channels whose guide names both teams are the fallback.
  */
+@Volatile private var normNames: Pair<List<Channel>, Array<String>>? = null
+
+private fun normalizedNames(channels: List<Channel>): Array<String> {
+    normNames?.let { (list, names) -> if (list === channels) return names }
+    return Array(channels.size) { norm(channels[it].name) }.also { normNames = channels to it }
+}
+
+/** Heavy on big lineups (tens of thousands of channels): call off the main thread. */
 fun findChannelForGame(game: Game, channels: List<Channel>, epg: Map<String, List<Programme>>, aliases: Map<String, List<String>>): Channel? {
     val now = System.currentTimeMillis()
-    val teamsA = listOf(game.away.shortName, game.away.name).filter { it.isNotBlank() }
-    val teamsH = listOf(game.home.shortName, game.home.name).filter { it.isNotBlank() }
+    val names = normalizedNames(channels)
+    val teamsA = listOf(game.away.shortName, game.away.name).map(::norm).filter { it.isNotBlank() }
+    val teamsH = listOf(game.home.shortName, game.home.name).map(::norm).filter { it.isNotBlank() }
     fun airs(ch: Channel) = epg[ch.tvgId]?.any { pr ->
-        pr.start <= now + 30 * 60_000 && pr.stop > now &&
-            teamsA.any { containsToken(pr.title + " " + pr.desc, it) } &&
-            teamsH.any { containsToken(pr.title + " " + pr.desc, it) }
+        pr.start <= now + 30 * 60_000 && pr.stop > now && run {
+            val h = " ${norm(pr.title + " " + pr.desc)} "
+            teamsA.any { h.contains(" $it ") } && teamsH.any { h.contains(" $it ") }
+        }
     } == true
+    fun tok(i: Int, n: String) = n.isNotEmpty() && " ${names[i]} ".contains(" $n ")
     // Streaming-only networks ("ESPN+", "Peacock") would otherwise match the linear channel of a similar name.
-    val linear = game.networks.filter { !it.trim().endsWith("+") }.flatMap { listOf(it) + (aliases[it] ?: emptyList()) }
-    channels.firstOrNull { ch -> linear.any { norm(ch.name) == norm(it) } && airs(ch) }?.let { return it }
-    for (n in linear) channels.firstOrNull { norm(it.name) == norm(n) }?.let { return it }
+    val linear = game.networks.filter { !it.trim().endsWith("+") }.flatMap { listOf(it) + (aliases[it] ?: emptyList()) }.map(::norm).toSet()
+    channels.indices.firstOrNull { names[it] in linear && airs(channels[it]) }?.let { return channels[it] }
+    for (n in linear) channels.indices.firstOrNull { names[it] == n }?.let { return channels[it] }
     channels.firstOrNull { airs(it) }?.let { return it }
+    val junk = Regex("""\b(4k|uhd|backup)\b""", RegexOption.IGNORE_CASE)
     for (net in game.networks) {
-        val names = listOf(net) + (aliases[net] ?: emptyList())
-        for (n in names) {
-            channels.firstOrNull { norm(it.name) == norm(n) }?.let { return it }
-            channels.firstOrNull { containsToken(it.name, n) && !Regex("""\b(4k|uhd|backup)\b""", RegexOption.IGNORE_CASE).containsMatchIn(it.name) }?.let { return it }
-            channels.firstOrNull { containsToken(it.name, n) }?.let { return it }
+        for (n in (listOf(net) + (aliases[net] ?: emptyList())).map(::norm)) {
+            channels.indices.firstOrNull { names[it] == n }?.let { return channels[it] }
+            channels.indices.firstOrNull { tok(it, n) && !junk.containsMatchIn(channels[it].name) }?.let { return channels[it] }
+            channels.indices.firstOrNull { tok(it, n) }?.let { return channels[it] }
         }
     }
     return null

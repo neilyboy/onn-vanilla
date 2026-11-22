@@ -239,7 +239,7 @@ private fun HomeTab(a: MainActivity, c: LiveConfig?, accent: Color) {
 
     LazyColumn(state = listState, modifier = Modifier.onPreviewKeyEvent { touched = true; false }, contentPadding = PaddingValues(top = 14.dp, bottom = 56.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
         if (hero != null) { val f = focusFor(); item("hero") { Hero(hero, favTeams, accent, look.hero == 1, Modifier.focusRequester(f!!)) { a.playGame(hero) } } }
-        if (live.isNotEmpty()) item("live") { GameShelf("Live now", live, favTeams, accent, a) { a.playGame(it) } }
+        if (live.isNotEmpty()) item("live") { GameShelf("Live now", live, favTeams, accent, a, multiview = listOfNotNull(hero?.takeIf { it.state == "in" }) + live) { a.playGame(it) } }
         if (a.resume.value.isNotEmpty()) item("resume") { ResumeShelf(a, a.resume.value, accent) }
         if (recentChans.isNotEmpty()) { val f = focusFor(); item("recent") { ChannelShelf(a, "Recently watched", recentChans, guide, accent, f) } }
         if (favChans.isNotEmpty()) { val f = focusFor(); item("favs") { ChannelShelf(a, "Favorite channels", favChans, guide, accent, f) } }
@@ -328,10 +328,11 @@ private fun StatusPill(g: Game) = when (g.state) {
 }
 
 @Composable
-private fun GameShelf(title: String, list: List<Game>, favs: Set<String>, accent: Color, a: MainActivity? = null, onPlay: (Game) -> Unit) {
+private fun GameShelf(title: String, list: List<Game>, favs: Set<String>, accent: Color, a: MainActivity? = null, multiview: List<Game> = emptyList(), onPlay: (Game) -> Unit) {
     val rem = a?.reminders?.value ?: emptySet()
     Shelf(title) {
         LazyRow(contentPadding = PaddingValues(horizontal = 48.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+            if (a != null && multiview.size >= 2) item("multiview") { MultiviewCard(multiview.size.coerceAtMost(MultiviewActivity.MAX), accent) { a.multiview(multiview) } }
             items(list, key = { it.league + it.id }) { g -> GameCard(g, favs, accent, Modifier, gameKey(g) in rem, { a?.toggleReminder(g) }) { onPlay(g) } }
         }
     }
@@ -938,6 +939,34 @@ private fun SeriesDetail(a: MainActivity, xc: Xc, s: VodItem, accent: Color, onB
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun MultiviewCard(n: Int, accent: Color, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.size(width = 176.dp, height = 176.dp),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(18.dp)),
+        colors = ClickableSurfaceDefaults.colors(containerColor = Palette.card, focusedContainerColor = Palette.card),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.07f),
+        border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(3.dp, Palette.text))),
+        glow = ClickableSurfaceDefaults.glow(focusedGlow = Glow(accent.copy(alpha = 0.3f), 16.dp)),
+    ) {
+        Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                repeat(2) { r ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        repeat(2) { c ->
+                            val on = r * 2 + c < n
+                            Box(Modifier.size(width = 38.dp, height = 24.dp).clip(RoundedCornerShape(4.dp)).background(if (on) accent.copy(alpha = if (r + c == 0) 1f else 0.55f) else Palette.sub.copy(alpha = 0.2f)))
+                        }
+                    }
+                }
+            }
+            Text("Multiview", color = Palette.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 14.dp))
+            Text("Up to $n games at once", color = Palette.sub, fontSize = 12.sp)
         }
     }
 }

@@ -87,9 +87,11 @@ class MainActivity : ComponentActivity() {
         val c = config.value ?: return
         val g = dueKickoff(games.value, c.favoriteTeams, reminders.value) ?: return
         Repo.notified += gameKey(g)
-        val ch = findChannelForGame(g, channels.value, epg.value, c.networkAliases) ?: return
-        kickoff.value = g to ch
-        window.decorView.postDelayed({ if (kickoff.value?.first == g) kickoff.value = null }, 30_000)
+        lifecycleScope.launch {
+            val ch = withContext(Dispatchers.Default) { findChannelForGame(g, channels.value, epg.value, c.networkAliases) } ?: return@launch
+            kickoff.value = g to ch
+            window.decorView.postDelayed({ if (kickoff.value?.first == g) kickoff.value = null }, 30_000)
+        }
     }
     private val commitTyped = Runnable {
         val i = findByNumber(channels.value, typed.value)
@@ -259,14 +261,18 @@ class MainActivity : ComponentActivity() {
         val list = channels.value
         if (list.isEmpty()) return
         pendingTune = null
-        val ch = if (q.startsWith("game:")) {
-            val abbr = q.removePrefix("game:").uppercase()
-            games.value.firstOrNull { it.home.abbr == abbr || it.away.abbr == abbr }
-                ?.let { findChannelForGame(it, list, epg.value, config.value?.networkAliases ?: emptyMap()) }
-        } else {
-            list.firstOrNull { it.name.equals(q, true) } ?: list.firstOrNull { it.name.contains(q, true) }
+        lifecycleScope.launch {
+            val ch = withContext(Dispatchers.Default) {
+                if (q.startsWith("game:")) {
+                    val abbr = q.removePrefix("game:").uppercase()
+                    games.value.firstOrNull { it.home.abbr == abbr || it.away.abbr == abbr }
+                        ?.let { findChannelForGame(it, list, epg.value, config.value?.networkAliases ?: emptyMap()) }
+                } else {
+                    list.firstOrNull { it.name.equals(q, true) } ?: list.firstOrNull { it.name.contains(q, true) }
+                }
+            }
+            if (ch != null) play(ch) else Toast.makeText(this@MainActivity, "No channel for \"$q\"", Toast.LENGTH_SHORT).show()
         }
-        if (ch != null) play(ch) else Toast.makeText(this, "No channel for \"$q\"", Toast.LENGTH_SHORT).show()
     }
 
     fun play(ch: Channel) {
@@ -280,11 +286,32 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    /** Opens up to 4 live games side by side; each uses one provider stream. */
+    fun multiview(games: List<Game>) {
+        val c = config.value ?: return
+        lifecycleScope.launch {
+        val picks = withContext(Dispatchers.Default) {
+            games.mapNotNull { g -> findChannelForGame(g, channels.value, epg.value, c.networkAliases)?.let { it to listOfNotNull("${g.away.abbr} @ ${g.home.abbr}", g.networks.firstOrNull()).joinToString(" · ") } }
+                .distinctBy { it.first.index }.take(MultiviewActivity.MAX)
+        }
+        if (picks.size < 2) { Toast.makeText(this@MainActivity, "Need at least 2 live games with channels for multiview", Toast.LENGTH_LONG).show(); return@launch }
+        startActivity(
+            Intent(this@MainActivity, MultiviewActivity::class.java)
+                .putExtra("indices", picks.map { it.first.index }.toIntArray())
+                .putExtra("labels", picks.map { it.second }.toTypedArray())
+                .putExtra("profile", profile.value.name)
+                .putExtra("kids", profile.value.kids)
+        )
+        }
+    }
+
     fun playGame(g: Game) {
         val c = config.value ?: return
-        val ch = findChannelForGame(g, channels.value, epg.value, c.networkAliases)
-        if (ch != null) play(ch)
-        else Toast.makeText(this, "No channel found for ${g.networks.joinToString().ifBlank { g.name }}", Toast.LENGTH_LONG).show()
+        lifecycleScope.launch {
+            val ch = withContext(Dispatchers.Default) { findChannelForGame(g, channels.value, epg.value, c.networkAliases) }
+            if (ch != null) play(ch)
+            else Toast.makeText(this@MainActivity, "No channel found for ${g.networks.joinToString().ifBlank { g.name }}", Toast.LENGTH_LONG).show()
+        }
     }
 
     fun toggleFavorite(ch: Channel) {

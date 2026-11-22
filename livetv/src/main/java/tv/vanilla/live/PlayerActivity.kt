@@ -45,7 +45,9 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.*
 import coil.compose.AsyncImage
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.time.Instant
@@ -77,10 +79,12 @@ class PlayerActivity : ComponentActivity() {
         if (kickoff.value != null) return
         val g = dueKickoff(games.value, Repo.favTeams, Settings(this).reminders) ?: return
         Repo.notified += gameKey(g)
-        val ch = findChannelForGame(g, Repo.channels, Repo.epg, Repo.aliases) ?: return
-        if (ch.index == index.intValue) return
-        kickoff.value = g to ch.index
-        window.decorView.postDelayed({ if (kickoff.value?.first == g) kickoff.value = null }, 30_000)
+        lifecycleScope.launch {
+            val ch = withContext(Dispatchers.Default) { findChannelForGame(g, Repo.channels, Repo.epg, Repo.aliases) } ?: return@launch
+            if (ch.index == index.intValue) return@launch
+            kickoff.value = g to ch.index
+            window.decorView.postDelayed({ if (kickoff.value?.first == g) kickoff.value = null }, 30_000)
+        }
     }
     private var retries = 0
     private val playedOnce = mutableStateOf(false)

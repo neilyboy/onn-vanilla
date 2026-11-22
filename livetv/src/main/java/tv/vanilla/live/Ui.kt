@@ -9,6 +9,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -59,7 +63,7 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-private enum class Tab(val label: String) { Home("Home"), Sports("Sports"), Guide("Guide"), Search("Search"), Settings("Settings") }
+private enum class Tab(val label: String) { Home("Home"), Sports("Sports"), Guide("Guide"), Movies("Movies"), Series("Series"), Search("Search"), Settings("Settings") }
 
 private val timeFmt: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm a")
 private fun fmtTime(ms: Long) = Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()).format(timeFmt)
@@ -99,7 +103,8 @@ fun LiveApp(a: MainActivity) {
         a.pinFor.value?.let { p -> PinPad("Enter PIN for ${p.name}", p.pin.length, accent, a::unlock) { a.pinFor.value = null }; return@Box }
         if (a.showPicker.value) { ProfilePicker(a); return@Box }
         Column(Modifier.fillMaxSize()) {
-            TopBar(tab, accent, a.profile.value, a.profileIndex(), { a.cycleProfile() }) { tab = it }
+            val tabs = Tab.entries.filter { c?.xc != null || (it != Tab.Movies && it != Tab.Series) }
+            TopBar(tabs, tab, accent, a.profile.value, a.profileIndex(), { a.cycleProfile() }) { tab = it }
             val s = a.status.value
             if (s.isNotBlank()) Text(s, color = Palette.sub, fontSize = 16.sp, modifier = Modifier.padding(horizontal = 48.dp, vertical = 4.dp))
             Crossfade(tab, label = "tab") { t ->
@@ -107,6 +112,8 @@ fun LiveApp(a: MainActivity) {
                     Tab.Home -> HomeTab(a, c, accent)
                     Tab.Sports -> SportsTab(a, c, accent)
                     Tab.Guide -> GuideTab(a, c, accent)
+                    Tab.Movies -> c?.xc?.let { VodTab(a, it, false, accent) }
+                    Tab.Series -> c?.xc?.let { VodTab(a, it, true, accent) }
                     Tab.Search -> SearchTab(a, accent)
                     Tab.Settings -> LookTab(a, accent)
                 }
@@ -124,7 +131,7 @@ fun LiveApp(a: MainActivity) {
 }
 
 @Composable
-private fun TopBar(tab: Tab, accent: Color, profile: Profile, profileIdx: Int, onProfile: () -> Unit, onTab: (Tab) -> Unit) {
+private fun TopBar(tabs: List<Tab>, tab: Tab, accent: Color, profile: Profile, profileIdx: Int, onProfile: () -> Unit, onTab: (Tab) -> Unit) {
     var now by remember { mutableStateOf(LocalDateTime.now()) }
     LaunchedEffect(Unit) { while (true) { now = LocalDateTime.now(); delay(15_000) } }
     Row(
@@ -135,9 +142,9 @@ private fun TopBar(tab: Tab, accent: Color, profile: Profile, profileIdx: Int, o
         Spacer(Modifier.width(10.dp))
         Text("LIVE", color = Palette.text, fontSize = 22.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
         Spacer(Modifier.width(36.dp))
-        val req = remember { Tab.entries.associateWith { FocusRequester() } }
+        val req = remember(tabs) { tabs.associateWith { FocusRequester() } }
         Row(Modifier.focusRestorer { req.getValue(tab) }.focusGroup()) {
-        Tab.entries.forEach { t ->
+        tabs.forEach { t ->
             val selected = t == tab
             Surface(
                 onClick = { onTab(t) },
@@ -232,6 +239,7 @@ private fun HomeTab(a: MainActivity, c: LiveConfig?, accent: Color) {
     LazyColumn(state = listState, modifier = Modifier.onPreviewKeyEvent { touched = true; false }, contentPadding = PaddingValues(bottom = 56.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
         if (hero != null) { val f = focusFor(); item("hero") { Hero(hero, favTeams, accent, look.hero == 1, Modifier.focusRequester(f!!)) { a.playGame(hero) } } }
         if (live.isNotEmpty()) item("live") { GameShelf("Live now", live, favTeams, accent, a) { a.playGame(it) } }
+        if (a.resume.value.isNotEmpty()) item("resume") { ResumeShelf(a, a.resume.value, accent) }
         if (recentChans.isNotEmpty()) { val f = focusFor(); item("recent") { ChannelShelf(a, "Recently watched", recentChans, guide, accent, f) } }
         if (favChans.isNotEmpty()) { val f = focusFor(); item("favs") { ChannelShelf(a, "Favorite channels", favChans, guide, accent, f) } }
         moods.forEach { (k, list) -> val f = focusFor(); item("m-$k") { ChannelShelf(a, "$k on now", list, guide, accent, f) } }
@@ -771,6 +779,156 @@ private fun LookRow(label: String, value: String, accent: Color, modifier: Modif
             Text(label, fontSize = 17.sp, modifier = Modifier.weight(1f))
             if (swatch != null) { Box(Modifier.size(18.dp).clip(CircleShape).background(swatch).border(1.dp, Palette.sub, CircleShape)); Spacer(Modifier.width(10.dp)) }
             Text(value, fontSize = 17.sp, color = Palette.sub)
+        }
+    }
+}
+
+// ---------------------------------------------------------------- Movies & Series
+
+@Composable
+private fun VodTab(a: MainActivity, xc: Xc, series: Boolean, accent: Color) {
+    val adult = a.look.value.adult && !a.profile.value.kids
+    val cats by produceState<List<VodCat>?>(null, adult, series) {
+        value = withContext(Dispatchers.IO) { runCatching { Vod.cats(xc, series, adult) }.getOrDefault(emptyList()) }
+    }
+    var cat by remember(series) { mutableStateOf<VodCat?>(null) }
+    var open by remember(series) { mutableStateOf<VodItem?>(null) }
+    open?.let { s -> SeriesDetail(a, xc, s, accent) { open = null }; return }
+    val list = cats
+    if (list == null) { Text("Loading…", color = Palette.sub, modifier = Modifier.padding(horizontal = 48.dp)); return }
+    if (list.isEmpty()) {
+        Text("Nothing here yet. Turn on VOD for your providers in Dispatcharr (M3U accounts → Edit → VOD).", color = Palette.sub, modifier = Modifier.padding(horizontal = 48.dp))
+        return
+    }
+    LaunchedEffect(list) { if (cat == null || cat !in list) cat = list.first() }
+    val items by produceState<List<VodItem>?>(null, cat, adult) {
+        value = null
+        val c = cat ?: return@produceState
+        delay(300)
+        value = withContext(Dispatchers.IO) { runCatching { Vod.items(xc, series, c.id, adult) }.getOrDefault(emptyList()) }
+    }
+    Row(Modifier.fillMaxSize().padding(start = 48.dp, end = 24.dp, top = 4.dp)) {
+        LazyColumn(Modifier.width(230.dp), contentPadding = PaddingValues(bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            items(list, key = { it.id }) { c ->
+                val sel = c == cat
+                Surface(
+                    onClick = { cat = c },
+                    modifier = Modifier.fillMaxWidth().onFocusChanged { if (it.isFocused) cat = c },
+                    shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
+                    colors = ClickableSurfaceDefaults.colors(containerColor = if (sel) Palette.card else Color.Transparent, focusedContainerColor = Palette.text, contentColor = if (sel) Palette.text else Palette.sub, focusedContentColor = Palette.bg),
+                    scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+                ) { Text(c.name, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)) }
+            }
+        }
+        Spacer(Modifier.width(20.dp))
+        val shown = items
+        when {
+            shown == null -> Text("Loading…", color = Palette.sub)
+            shown.isEmpty() -> Text("Nothing in this category.", color = Palette.sub)
+            else -> LazyVerticalGrid(
+                GridCells.Adaptive(112.dp), Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(top = 6.dp, bottom = 40.dp, end = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                gridItems(shown, key = { it.id }) { v ->
+                    PosterCard(v.name, v.poster, listOf(v.year, v.rating.let { if (it.isBlank()) "" else "★ $it" }).filter { it.isNotBlank() }.joinToString("  "), accent) {
+                        if (series) open = v
+                        else a.playVod(xc.movieUrl(v.id, v.ext), v.name, v.year, v.poster, "movie:${v.id}")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PosterCard(title: String, poster: String, meta: String, accent: Color, progress: Float = 0f, onClick: () -> Unit) {
+    Column {
+        Surface(
+            onClick = onClick,
+            modifier = Modifier.size(width = 112.dp, height = 166.dp),
+            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
+            colors = ClickableSurfaceDefaults.colors(containerColor = Palette.card, focusedContainerColor = Palette.card),
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
+            border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Palette.text))),
+            glow = ClickableSurfaceDefaults.glow(focusedGlow = Glow(accent.copy(alpha = 0.3f), 12.dp)),
+        ) {
+            Text(title, color = Palette.sub, fontSize = 12.sp, maxLines = 4, modifier = Modifier.align(Alignment.Center).padding(8.dp))
+            if (poster.isNotBlank()) AsyncImage(poster, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            if (progress > 0f) Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.dp).background(Color(0x80000000))) {
+                Box(Modifier.fillMaxHeight().fillMaxWidth(progress).background(accent))
+            }
+        }
+        Text(title, color = Palette.text, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.width(112.dp).padding(top = 6.dp))
+        if (meta.isNotBlank()) Text(meta, color = Palette.sub, fontSize = 11.sp, maxLines = 1, modifier = Modifier.width(112.dp))
+    }
+}
+
+@Composable
+private fun ResumeShelf(a: MainActivity, list: List<Resume>, accent: Color) {
+    Shelf("Continue watching") {
+        LazyRow(contentPadding = PaddingValues(horizontal = 48.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            items(list, key = { it.key }) { r ->
+                PosterCard(r.title, r.poster, r.subtitle, accent, r.progress) { a.playVod(r.url, r.title, r.subtitle, r.poster, r.key) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SeriesDetail(a: MainActivity, xc: Xc, s: VodItem, accent: Color, onBack: () -> Unit) {
+    BackHandler(onBack = onBack)
+    val eps by produceState<List<Episode>?>(null, s.id) {
+        value = withContext(Dispatchers.IO) { runCatching { Vod.episodes(xc, s.id) }.getOrDefault(emptyList()) }
+    }
+    val resume = a.resume.value.associateBy { it.key }
+    val first = remember { FocusRequester() }
+    Row(Modifier.fillMaxSize().padding(start = 48.dp, end = 48.dp, top = 8.dp)) {
+        Column(Modifier.width(220.dp)) {
+            Box(Modifier.size(width = 160.dp, height = 236.dp).clip(RoundedCornerShape(12.dp)).background(Palette.card)) {
+                if (s.poster.isNotBlank()) AsyncImage(s.poster, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            }
+            Spacer(Modifier.height(12.dp))
+            Text(s.name, color = Palette.text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 3)
+            Text(listOf(s.year, s.rating.let { if (it.isBlank()) "" else "★ $it" }).filter { it.isNotBlank() }.joinToString("  "), color = Palette.sub, fontSize = 13.sp)
+            Spacer(Modifier.height(8.dp))
+            Text(s.plot, color = Palette.sub, fontSize = 12.sp, maxLines = 8, overflow = TextOverflow.Ellipsis)
+        }
+        Spacer(Modifier.width(24.dp))
+        val list = eps
+        when {
+            list == null -> Text("Loading episodes…", color = Palette.sub)
+            list.isEmpty() -> Text("No episodes found.", color = Palette.sub)
+            else -> {
+                LaunchedEffect(list) { delay(100); runCatching { first.requestFocus() } }
+                LazyColumn(contentPadding = PaddingValues(bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    itemsIndexed(list, key = { _, e -> e.id }) { i, e ->
+                        val showSeason = i == 0 || list[i - 1].season != e.season
+                        if (showSeason) Text("Season ${e.season}", color = Palette.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = if (i == 0) 0.dp else 12.dp, bottom = 4.dp))
+                        val key = "ep:${e.id}"
+                        val r = resume[key]
+                        Surface(
+                            onClick = { a.playVod(xc.episodeUrl(e.id, e.ext), e.title.ifBlank { "Episode ${e.num}" }, "${s.name} · S${e.season} E${e.num}", s.poster, key) },
+                            modifier = Modifier.fillMaxWidth().then(if (i == 0) Modifier.focusRequester(first) else Modifier),
+                            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
+                            colors = ClickableSurfaceDefaults.colors(containerColor = Palette.card, focusedContainerColor = Palette.cardFocused),
+                            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.01f),
+                            border = ClickableSurfaceDefaults.border(focusedBorder = Border(BorderStroke(2.dp, Palette.text))),
+                        ) {
+                            Column(Modifier.padding(horizontal = 14.dp, vertical = 9.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("E${e.num}", color = accent, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(44.dp))
+                                    Text(e.title.ifBlank { "Episode ${e.num}" }, color = Palette.text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                    if (e.duration.isNotBlank()) Text(e.duration, color = Palette.sub, fontSize = 12.sp)
+                                }
+                                if (r != null) Box(Modifier.padding(top = 6.dp).fillMaxWidth().height(3.dp).background(Color(0x40FFFFFF))) {
+                                    Box(Modifier.fillMaxHeight().fillMaxWidth(r.progress).background(accent))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

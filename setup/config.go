@@ -32,6 +32,8 @@ type Setup struct {
 	TeamInfo        map[string]any `json:"teamInfo,omitempty"`
 	RemoteConfigURL string         `json:"remoteConfigUrl"`
 	Boxes           []string       `json:"boxes"`
+	XcUser          string         `json:"xcUser,omitempty"`
+	XcPass          string         `json:"xcPass,omitempty"`
 }
 
 // Profile is a Live TV "who's watching" entry: its groups and guide keywords are shown first.
@@ -157,6 +159,7 @@ func (s Setup) boxConfig() (map[string]any, error) {
 			"accent":      firstNonEmpty(s.Accent, "#E5484D"),
 			"profiles":    profiles,
 			"ask_profile": s.AskProfile,
+			"xc":          xcConfig(s),
 			"network_aliases": map[string][]string{
 				"Prime Video": {"Prime Video NFL", "Amazon Prime"},
 				"NFL Net":     {"NFL Network"},
@@ -174,4 +177,12 @@ func firstNonEmpty(v ...string) string {
 		}
 	}
 	return ""
+}
+
+// xcConfig is the Dispatcharr Xtream login Live TV uses for Movies & Series (nil when not enabled).
+func xcConfig(s Setup) any {
+	if s.XcUser == "" || s.XcPass == "" {
+		return nil
+	}
+	return map[string]any{"username": s.XcUser, "password": s.XcPass}
 }

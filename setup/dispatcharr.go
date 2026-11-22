@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
 	_ "embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -103,6 +105,30 @@ type dcStream struct {
 	TvgID   string `json:"tvg_id"`
 	Group   int    `json:"channel_group"`
 	Stale   bool   `json:"is_stale"`
+}
+
+// enableXC creates (or updates) a limited Dispatcharr user whose Xtream login the TV apps use for Movies & Series.
+func (c *dcClient) enableXC(name string) (string, error) {
+	var users []struct {
+		ID       int    `json:"id"`
+		Username string `json:"username"`
+	}
+	if err := c.do("GET", "/api/accounts/users/", nil, &users); err != nil {
+		return "", err
+	}
+	b := make([]byte, 12)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	pass := hex.EncodeToString(b)
+	body := map[string]any{"username": name, "user_level": 1, "custom_properties": map[string]any{"xc_password": pass}}
+	for _, u := range users {
+		if u.Username == name {
+			return pass, c.do("PATCH", fmt.Sprintf("/api/accounts/users/%d/", u.ID), body, nil)
+		}
+	}
+	body["password"] = hex.EncodeToString(b[:6]) + "Aa1!"
+	return pass, c.do("POST", "/api/accounts/users/", body, nil)
 }
 
 func (c *dcClient) accounts() ([]dcAccount, error) {

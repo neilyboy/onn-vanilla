@@ -90,6 +90,7 @@ data class LiveConfig(
     val accent: String,
     val profiles: List<Profile> = DEFAULT_PROFILES,
     val askProfile: Boolean = false,
+    val xc: Xc? = null,
 )
 
 val LEAGUE_PATHS = mapOf(
@@ -361,6 +362,11 @@ fun parseLiveConfig(text: String?, settings: Settings): LiveConfig {
         networkAliases = aliases,
         accent = live.optString("accent", "#E5484D"),
         askProfile = live.optBoolean("ask_profile", false),
+        xc = live.optJSONObject("xc")?.let { o ->
+            val base = o.optString("url").ifBlank { Regex("^https?://[^/]+").find(settings.m3uOverride.ifBlank { live.optString("m3u_url", "") })?.value ?: "" }
+            val u = o.optString("username"); val p = o.optString("password")
+            if (base.isBlank() || u.isBlank() || p.isBlank()) null else Xc(base.trimEnd('/'), u, p)
+        },
         profiles = live.optJSONArray("profiles")?.let { a ->
             (0 until a.length()).mapNotNull { i -> a.optJSONObject(i) }.map { o ->
                 fun arr(k: String) = o.optJSONArray(k)?.let { x -> (0 until x.length()).map { x.getString(it) } } ?: emptyList()

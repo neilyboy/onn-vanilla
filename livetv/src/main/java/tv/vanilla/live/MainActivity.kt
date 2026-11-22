@@ -147,11 +147,23 @@ class MainActivity : ComponentActivity() {
         settings.profile = p.name
         favorites.value = settings.favoritesFor(p.name)
         recents.value = settings.recentsFor(p.name)
+        resume.value = ResumeStore.all(this, p.name)
+    }
+
+    val resume = mutableStateOf<List<Resume>>(emptyList())
+
+    fun playVod(url: String, title: String, subtitle: String, poster: String, key: String) {
+        startActivity(
+            Intent(this, VodPlayerActivity::class.java)
+                .putExtra("url", url).putExtra("title", title).putExtra("subtitle", subtitle)
+                .putExtra("poster", poster).putExtra("key", key).putExtra("profile", profile.value.name)
+        )
     }
 
     override fun onResume() {
         super.onResume()
         if (::settings.isInitialized) recents.value = settings.recentsFor(profile.value.name)
+        resume.value = ResumeStore.all(this, profile.value.name)
     }
 
     fun setLook(l: Look) {

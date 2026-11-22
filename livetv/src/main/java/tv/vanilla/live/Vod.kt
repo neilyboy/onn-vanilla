@@ -1,0 +1,98 @@
+package tv.vanilla.live
+
+import android.content.Context
+import org.json.JSONArray
+import org.json.JSONObject
+import java.net.URLEncoder
+
+/** Dispatcharr's Xtream Codes API, used for providers' movies and series. */
+data class Xc(val base: String, val user: String, val pass: String) {
+    private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
+    fun api(action: String, extra: String = "") = "$base/player_api.php?username=${enc(user)}&password=${enc(pass)}&action=$action$extra"
+    fun movieUrl(id: String, ext: String) = "$base/movie/$user/$pass/$id.${ext.ifBlank { "mp4" }}"
+    fun episodeUrl(id: String, ext: String) = "$base/series/$user/$pass/$id.${ext.ifBlank { "mp4" }}"
+}
+
+data class VodCat(val id: String, val name: String)
+data class VodItem(val id: String, val name: String, val poster: String, val ext: String, val rating: String, val year: String, val plot: String, val series: Boolean, val adult: Boolean)
+data class Episode(val id: String, val season: Int, val num: Int, val title: String, val ext: String, val plot: String, val still: String, val duration: String)
+
+private fun JSONObject.str(k: String) = optString(k).takeIf { it.isNotBlank() && it != "null" && it != "0" } ?: ""
+
+object Vod {
+    private val cache = HashMap<String, Any>()
+
+    @Suppress("UNCHECKED_CAST")
+    private fun <T> cached(key: String, load: () -> T): T = synchronized(cache) { cache[key] as T? } ?: load().also { synchronized(cache) { cache[key] = it as Any } }
+
+    private fun objs(a: JSONArray) = (0 until a.length()).mapNotNull { a.optJSONObject(it) }
+
+    fun cats(xc: Xc, series: Boolean, adult: Boolean): List<VodCat> = cached("c$series") {
+        objs(JSONArray(httpGet(xc.api(if (series) "get_series_categories" else "get_vod_categories"), 30000)))
+            .map { VodCat(it.optString("category_id"), it.optString("category_name")) }
+    }.filter { adult || !isAdultGroup(it.name) }
+
+    fun items(xc: Xc, series: Boolean, catId: String, adult: Boolean): List<VodItem> = cached("i$series:$catId") {
+        objs(JSONArray(httpGet(xc.api(if (series) "get_series" else "get_vod_streams", "&category_id=$catId"), 60000))).map { o ->
+            VodItem(
+                id = o.optString(if (series) "series_id" else "stream_id"),
+                name = o.optString("name"),
+                poster = o.str(if (series) "cover" else "stream_icon"),
+                ext = o.str("container_extension"),
+                rating = o.str("rating"),
+                year = o.str("year").ifBlank { o.str("releaseDate").take(4) },
+                plot = o.str("plot"),
+                series = series,
+                adult = o.optInt("is_adult") == 1,
+            )
+        }
+    }.filter { adult || !it.adult }
+
+    fun episodes(xc: Xc, seriesId: String): List<Episode> = cached("e$seriesId") {
+        val root = JSONObject(httpGet(xc.api("get_series_info", "&series_id=$seriesId"), 30000))
+        val eps = root.opt("episodes")
+        val all = when (eps) {
+            is JSONObject -> eps.keys().asSequence().flatMap { k -> objs(eps.optJSONArray(k) ?: JSONArray()).asSequence() }.toList()
+            is JSONArray -> objs(eps)
+            else -> emptyList()
+        }
+        all.map { o ->
+            val info = o.optJSONObject("info") ?: JSONObject()
+            Episode(
+                id = o.optString("id"), season = o.optInt("season", 1), num = o.optInt("episode_num"),
+                title = o.str("title"), ext = o.str("container_extension"), plot = info.str("plot"),
+                still = info.str("movie_image"), duration = info.str("duration"),
+            )
+        }.sortedWith(compareBy({ it.season }, { it.num }))
+    }
+}
+
+/** Where each profile stopped in a movie or episode. */
+data class Resume(val key: String, val title: String, val subtitle: String, val poster: String, val url: String, val pos: Long, val dur: Long, val at: Long) {
+    val progress get() = if (dur > 0) (pos.toFloat() / dur).coerceIn(0f, 1f) else 0f
+}
+
+object ResumeStore {
+    private fun prefs(ctx: Context) = ctx.getSharedPreferences("vod", Context.MODE_PRIVATE)
+
+    fun all(ctx: Context, profile: String): List<Resume> {
+        val a = runCatching { JSONArray(prefs(ctx).getString("resume:$profile", "[]")) }.getOrDefault(JSONArray())
+        return (0 until a.length()).mapNotNull { a.optJSONObject(it) }.map {
+            Resume(it.optString("key"), it.optString("title"), it.optString("subtitle"), it.optString("poster"), it.optString("url"), it.optLong("pos"), it.optLong("dur"), it.optLong("at"))
+        }.sortedByDescending { it.at }
+    }
+
+    fun get(ctx: Context, profile: String, key: String) = all(ctx, profile).firstOrNull { it.key == key }
+
+    /** Saves progress; a title watched past 95% (or under a minute in) is dropped from Continue watching. */
+    fun save(ctx: Context, profile: String, r: Resume) {
+        val keep = r.pos > 60_000 && (r.dur <= 0 || r.pos < r.dur * 0.95)
+        val list = (if (keep) listOf(r) else emptyList()) + all(ctx, profile).filter { it.key != r.key }
+        val a = JSONArray()
+        list.take(30).forEach {
+            a.put(JSONObject().put("key", it.key).put("title", it.title).put("subtitle", it.subtitle).put("poster", it.poster)
+                .put("url", it.url).put("pos", it.pos).put("dur", it.dur).put("at", it.at))
+        }
+        prefs(ctx).edit().putString("resume:$profile", a.toString()).apply()
+    }
+}

@@ -69,6 +69,25 @@ func registerAPI(mux *http.ServeMux) {
 		c, err := dcLogin(loadSetup().Server, b.User, b.Pass)
 		return c, b, err
 	}
+	mux.HandleFunc("POST /api/vod/enable", func(w http.ResponseWriter, r *http.Request) {
+		c, _, err := lineupClient(r)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		pass, err := c.enableXC("vanilla-tv")
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		s := loadSetup()
+		s.XcUser, s.XcPass = "vanilla-tv", pass
+		if err := saveSetup(s); err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "user": s.XcUser})
+	})
 	mux.HandleFunc("GET /api/lineup/groups", func(w http.ResponseWriter, r *http.Request) {
 		var names []string
 		for _, g := range presetGroups() {

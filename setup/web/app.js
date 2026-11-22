@@ -265,6 +265,15 @@ async function init() {
     S.lineupCats = $$("#dc-cats input:checked").map(i => i.value); save();
     return { user: $("#dc-user").value, pass: $("#dc-pass").value, prefix: $("#dc-prefix").value, locals: $("#dc-locals").value.trim(), cats: S.lineupCats };
   };
+  $("#vod-status").textContent = S.xcUser ? "✓ On (sent to the box with your settings)" : "";
+  $("#vod-enable").onclick = async () => {
+    const st = $("#vod-status"); st.textContent = "Setting up…";
+    try {
+      await api("/api/vod/enable", { user: $("#dc-user").value, pass: $("#dc-pass").value });
+      S = await api("/api/setup");
+      st.textContent = "✓ On. Click \"Only send settings\" on the box step to update your TVs.";
+    } catch (e) { st.textContent = "✗ " + e.message; }
+  };
   $("#dc-preview").onclick = async () => {
     const st = $("#dc-status"), out = $("#dc-result"); st.textContent = "Reading your providers… (can take a minute)"; out.classList.add("hidden");
     try {

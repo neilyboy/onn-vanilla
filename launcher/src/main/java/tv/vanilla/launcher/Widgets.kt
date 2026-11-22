@@ -3,6 +3,8 @@
 package tv.vanilla.launcher
 
 import androidx.compose.animation.Crossfade
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.foundation.background
@@ -40,7 +42,7 @@ import kotlin.math.tan
 /** Widgets placed at [pos] (left, center or right), in the order the setup app listed them. */
 @Composable
 fun WidgetColumn(activity: MainActivity, cfg: LauncherConfig, theme: VanillaTheme, pos: String, modifier: Modifier) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(18.dp)) {
+    Column(modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(18.dp)) {
         cfg.widgets.filter { it.pos == pos }.forEach { w -> Widget(w.id, activity, cfg, theme, pos == "center") }
     }
 }
@@ -230,10 +232,10 @@ private fun NewsCards(items: List<Headline>, theme: VanillaTheme, wide: Boolean)
         Title("Headlines", theme)
         Crossfade(lead, label = "lead") { h ->
             Row(verticalAlignment = Alignment.CenterVertically) {
-                var shown by remember(h.image) { mutableStateOf(true) }
-                if (h.image.isNotBlank() && shown) {
-                    AsyncImage(h.image, null, contentScale = ContentScale.Crop, onError = { shown = false }, modifier = Modifier.size(if (wide) 200.dp else 112.dp, if (wide) 112.dp else 63.dp).clip(RoundedCornerShape(10.dp)))
-                    Spacer(Modifier.width(12.dp))
+                var loaded by remember(h.image) { mutableStateOf(false) }
+                if (h.image.isNotBlank()) {
+                    AsyncImage(h.image, null, contentScale = ContentScale.Crop, onSuccess = { loaded = true }, modifier = if (loaded) Modifier.size(if (wide) 200.dp else 112.dp, if (wide) 112.dp else 63.dp).clip(RoundedCornerShape(10.dp)) else Modifier.size(1.dp))
+                    if (loaded) Spacer(Modifier.width(12.dp))
                 }
                 Column {
                     Text(h.source.uppercase(), color = theme.accent, fontSize = 10.sp, fontWeight = FontWeight.Bold)

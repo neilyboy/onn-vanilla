@@ -25,6 +25,8 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
@@ -207,13 +209,17 @@ private fun Background(cfg: LauncherConfig, theme: VanillaTheme, walls: List<Str
                     label = "kbz",
                 ).value
             } else 1f
+            val model = ImageRequest.Builder(ctx).data(url).size(1920, 1080).crossfade(false).build()
+            // Photo frame: portrait shots sit on a blurred copy of themselves instead of black bars.
+            if (frame) AsyncImage(model, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().blur(40.dp).alpha(0.55f))
             AsyncImage(
-                model = ImageRequest.Builder(ctx).data(url).size(1920, 1080).crossfade(false).build(),
+                model = model,
                 contentDescription = null,
                 contentScale = if (frame) ContentScale.Fit else ContentScale.Crop,
                 modifier = Modifier.fillMaxSize().scale(zoom),
             )
         }
+        if (frame) Box(Modifier.fillMaxSize().background(Brush.radialGradient(listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent), center = androidx.compose.ui.geometry.Offset(Float.POSITIVE_INFINITY, 0f), radius = 900f)))
     }
 }
 

@@ -237,19 +237,37 @@ class MainActivity : ComponentActivity() {
                 status.value = "setup"
                 return@launch
             }
-            val list = withContext(Dispatchers.IO) { runCatching { Repo.loadPlaylist(this@MainActivity, c.m3uUrl) }.getOrNull() }
-            if (list == null) {
+            // Show the last lineup and guide right away, then refresh from the server.
+            val t0 = System.currentTimeMillis()
+            fun mark(what: String) = android.util.Log.i("VanillaLive", "$what at ${System.currentTimeMillis() - t0} ms")
+            val cached = withContext(Dispatchers.IO) { Repo.loadCachedPlaylist(this@MainActivity, c.m3uUrl); Repo.channels }
+            if (cached.isNotEmpty()) { channels.value = cached; status.value = ""; mark("cached playlist ${cached.size}") }
+            if (cached.isNotEmpty() && Repo.epg.isEmpty()) {
+                withContext(Dispatchers.IO) { Repo.loadCachedEpg(this@MainActivity) }
+                epg.value = Repo.epg
+                mark("cached guide ${Repo.epg.size}")
+            }
+            launch { games.value = withContext(Dispatchers.IO) { fetchGames(c.leagues) } }
+            val stale = cached.isEmpty() || Repo.playlistAgeMs(this@MainActivity) > 3_600_000L
+            val list = if (!stale) null else withContext(Dispatchers.IO) { runCatching { Repo.loadPlaylist(this@MainActivity, c.m3uUrl) }.getOrNull() }
+            if (list == null && cached.isEmpty()) {
                 status.value = "Can't reach playlist: ${c.m3uUrl}"
                 return@launch
             }
-            channels.value = list
-            status.value = if (list.isEmpty()) "Playlist is empty — add channels in Dispatcharr" else ""
-            launch { games.value = withContext(Dispatchers.IO) { fetchGames(c.leagues) } }
+            mark("playlist ${list?.size}")
+            if (list != null) {
+                channels.value = list
+                status.value = if (list.isEmpty()) "Playlist is empty — add channels in Dispatcharr" else ""
+            }
+            val chans = channels.value
             val epgUrl = c.epgUrl.ifBlank { c.m3uUrl.replace("/output/m3u", "/output/epg") }
-            withContext(Dispatchers.IO) { Repo.loadEpg(epgUrl, list) }
-            epg.value = Repo.epg
+            if (Repo.epg.isEmpty() || Repo.epgAgeMs(this@MainActivity) > 2 * 3_600_000L || (list != null && list.size != cached.size)) {
+                withContext(Dispatchers.IO) { Repo.loadEpg(this@MainActivity, epgUrl, chans) }
+                epg.value = Repo.epg
+                mark("guide ${Repo.epg.size}")
+            }
             if (!resumed && pendingTune == null && settings.resumeLast) {
-                list.firstOrNull { it.url == settings.lastChannel }?.let { play(it) }
+                chans.firstOrNull { it.url == settings.lastChannel }?.let { play(it) }
             }
             resumed = true
             tryTune()
@@ -286,22 +304,31 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    /** Opens up to 4 live games side by side; each uses one provider stream. */
-    fun multiview(games: List<Game>) {
-        val c = config.value ?: return
-        lifecycleScope.launch {
-        val picks = withContext(Dispatchers.Default) {
-            games.mapNotNull { g -> findChannelForGame(g, channels.value, epg.value, c.networkAliases)?.let { it to listOfNotNull("${g.away.abbr} @ ${g.home.abbr}", g.networks.firstOrNull()).joinToString(" · ") } }
-                .distinctBy { it.first.index }.take(MultiviewActivity.MAX)
-        }
-        if (picks.size < 2) { Toast.makeText(this@MainActivity, "Need at least 2 live games with channels for multiview", Toast.LENGTH_LONG).show(); return@launch }
+    val mvPicker = mutableStateOf(false)
+    /** Set by the visible tab: handles Back first (e.g. guide grid → group chips); false lets Back go to the tab bar. */
+    var tabBack: (() -> Boolean)? = null
+
+    /** Up to 4 channels side by side; each uses one provider stream. */
+    fun startMultiview(picks: List<Pair<Channel, String>>) {
+        if (picks.size < 2) { Toast.makeText(this, "Pick at least 2 channels", Toast.LENGTH_SHORT).show(); return }
+        mvPicker.value = false
         startActivity(
-            Intent(this@MainActivity, MultiviewActivity::class.java)
+            Intent(this, MultiviewActivity::class.java)
                 .putExtra("indices", picks.map { it.first.index }.toIntArray())
                 .putExtra("labels", picks.map { it.second }.toTypedArray())
                 .putExtra("profile", profile.value.name)
                 .putExtra("kids", profile.value.kids)
         )
+    }
+
+    suspend fun liveGameChannels(): List<Pair<Channel, String>> {
+        val c = config.value ?: return emptyList()
+        val live = games.value.filter { it.state == "in" }.sortedBy { if (isFavGame(it, c.favoriteTeams)) 0 else 1 }
+        return withContext(Dispatchers.Default) {
+            live.mapNotNull { g ->
+                findChannelForGame(g, channels.value, epg.value, c.networkAliases)
+                    ?.let { it to listOfNotNull("${g.away.abbr} @ ${g.home.abbr}", g.networks.firstOrNull()).joinToString(" · ") }
+            }.distinctBy { it.first.index }
         }
     }
 

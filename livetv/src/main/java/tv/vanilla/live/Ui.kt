@@ -23,6 +23,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -96,6 +97,16 @@ fun LiveApp(a: MainActivity) {
     val accent = parseColor(look.accent.ifBlank { c?.accent ?: "" }, Palette.live)
     var tab by remember { mutableStateOf(Tab.Home) }
     LaunchedEffect(a.searchNow.intValue) { if (a.searchNow.intValue > 0) tab = Tab.Search }
+    val tabReq = remember { Tab.entries.associateWith { FocusRequester() } }
+    var topFocused by remember { mutableStateOf(false) }
+    var lastBack by remember { mutableStateOf(0L) }
+    BackHandler(enabled = a.status.value != "setup" && a.pinFor.value == null && !a.showPicker.value && !a.mvPicker.value) {
+        if (topFocused) {
+            val now = System.currentTimeMillis()
+            if (now - lastBack < 2_500) a.finish()
+            else { lastBack = now; android.widget.Toast.makeText(a, "Press Back again to exit", android.widget.Toast.LENGTH_SHORT).show() }
+        } else if (a.tabBack?.invoke() != true) runCatching { tabReq.getValue(tab).requestFocus() }
+    }
     val d = LocalDensity.current
     CompositionLocalProvider(LocalDensity provides Density(d.density * look.scale * BASE_SCALE, d.fontScale * look.text)) {
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(lerp(Palette.bg, Color.White, 0.04f), Palette.bg, Palette.bg)))) {
@@ -104,7 +115,7 @@ fun LiveApp(a: MainActivity) {
         if (a.showPicker.value) { ProfilePicker(a); return@Box }
         Column(Modifier.fillMaxSize()) {
             val tabs = Tab.entries.filter { c?.xc != null || (it != Tab.Movies && it != Tab.Series) }
-            TopBar(tabs, tab, accent, a.profile.value, a.profileIndex(), { a.cycleProfile() }) { tab = it }
+            TopBar(tabs, tab, accent, a.profile.value, a.profileIndex(), tabReq, { topFocused = it }, { a.cycleProfile() }) { tab = it }
             val s = a.status.value
             if (s.isNotBlank()) Text(s, color = Palette.sub, fontSize = 16.sp, modifier = Modifier.padding(horizontal = 48.dp, vertical = 4.dp))
             Crossfade(tab, label = "tab") { t ->
@@ -120,6 +131,7 @@ fun LiveApp(a: MainActivity) {
                 }
             }
         }
+        if (a.mvPicker.value) MultiviewPicker(a, accent)
         a.kickoff.value?.let { (g, ch) -> KickoffCard(g, ch.name, accent, Modifier.align(Alignment.BottomEnd)) }
         if (a.typed.value.isNotEmpty()) {
             Text(
@@ -132,7 +144,7 @@ fun LiveApp(a: MainActivity) {
 }
 
 @Composable
-private fun TopBar(tabs: List<Tab>, tab: Tab, accent: Color, profile: Profile, profileIdx: Int, onProfile: () -> Unit, onTab: (Tab) -> Unit) {
+private fun TopBar(tabs: List<Tab>, tab: Tab, accent: Color, profile: Profile, profileIdx: Int, req: Map<Tab, FocusRequester>, onFocusIn: (Boolean) -> Unit, onProfile: () -> Unit, onTab: (Tab) -> Unit) {
     var now by remember { mutableStateOf(LocalDateTime.now()) }
     LaunchedEffect(Unit) { while (true) { now = LocalDateTime.now(); delay(15_000) } }
     Row(
@@ -143,8 +155,7 @@ private fun TopBar(tabs: List<Tab>, tab: Tab, accent: Color, profile: Profile, p
         Spacer(Modifier.width(10.dp))
         Text("LIVE", color = Palette.text, fontSize = 22.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
         Spacer(Modifier.width(36.dp))
-        val req = remember(tabs) { tabs.associateWith { FocusRequester() } }
-        Row(Modifier.focusRestorer { req.getValue(tab) }.focusGroup()) {
+        Row(Modifier.onFocusChanged { onFocusIn(it.hasFocus) }.focusRestorer { req.getValue(tab) }.focusGroup()) {
         tabs.forEach { t ->
             val selected = t == tab
             Surface(
@@ -197,12 +208,13 @@ private fun HomeTab(a: MainActivity, c: LiveConfig?, accent: Color) {
     val favs = a.favorites.value
     val sportsOn = profile.sports
     val liveGames = sportsOn && games.any { it.state == "in" }
-    val hero = if (!sportsOn || look.hero == 0) null else
-        games.firstOrNull { it.state == "in" && isFav(it, favTeams) }
-            ?: games.firstOrNull { it.state == "in" }
-            ?: games.firstOrNull { it.state == "pre" && isFav(it, favTeams) }
-    val live = if (sportsOn) games.filter { it.state == "in" && it !== hero } else emptyList()
-    val upcoming = if (sportsOn) games.filter { it.state == "pre" && it !== hero } else emptyList()
+    // Your teams' games (live, then coming up) get the big cards; with none, the top live game does.
+    val featured = if (!sportsOn || look.hero == 0) emptyList() else
+        games.filter { (it.state == "in" || it.state == "pre") && isFav(it, favTeams) }.take(8)
+            .ifEmpty { listOfNotNull(games.firstOrNull { it.state == "in" }) }
+    val hero = featured.firstOrNull()
+    val live = if (sportsOn) games.filter { it.state == "in" && it !in featured } else emptyList()
+    val upcoming = if (sportsOn) games.filter { it.state == "pre" && it !in featured } else emptyList()
     val sportsKeys = c?.sportsGroupKeywords ?: emptyList()
     val groups = remember(chans) { chans.groupBy { it.group }.filterKeys { !isAdultGroup(it) } }
     val sportsGroups = remember(groups, sportsKeys) { groups.keys.filter { g -> sportsKeys.any { g.contains(it, true) } } }
@@ -227,6 +239,13 @@ private fun HomeTab(a: MainActivity, c: LiveConfig?, accent: Color) {
     }
     val first = remember { FocusRequester() }
     val listState = rememberLazyListState()
+    var homeTop by remember { mutableStateOf(0) }
+    LaunchedEffect(homeTop) { if (homeTop > 0) listState.scrollToItem(0) }
+    DisposableEffect(Unit) {
+        val h: () -> Boolean = { homeTop++; false }
+        a.tabBack = h
+        onDispose { if (a.tabBack === h) a.tabBack = null }
+    }
     var touched by remember { mutableStateOf(false) }
     LaunchedEffect(hero?.id, chans.isNotEmpty(), profile) {
         if (!touched && (hero != null || chans.isNotEmpty())) {
@@ -238,8 +257,19 @@ private fun HomeTab(a: MainActivity, c: LiveConfig?, accent: Color) {
     fun focusFor(): FocusRequester? = if (firstTaken) null else { firstTaken = true; first }
 
     LazyColumn(state = listState, modifier = Modifier.onPreviewKeyEvent { touched = true; false }, contentPadding = PaddingValues(top = 14.dp, bottom = 56.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
-        if (hero != null) { val f = focusFor(); item("hero") { Hero(hero, favTeams, accent, look.hero == 1, Modifier.focusRequester(f!!)) { a.playGame(hero) } } }
-        if (live.isNotEmpty()) item("live") { GameShelf("Live now", live, favTeams, accent, a, multiview = listOfNotNull(hero?.takeIf { it.state == "in" }) + live) { a.playGame(it) } }
+        if (featured.size == 1) { val f = focusFor(); item("hero") { Hero(hero!!, favTeams, accent, look.hero == 1, Modifier.focusRequester(f!!)) { a.playGame(hero) } } }
+        else if (featured.size > 1) {
+            val f = focusFor()
+            item("heroes") {
+                LazyRow(contentPadding = PaddingValues(horizontal = 48.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                    items(featured.size, key = { featured[it].league + featured[it].id }) { i ->
+                        val g = featured[i]
+                        Hero(g, favTeams, accent, true, if (i == 0) Modifier.focusRequester(f!!) else Modifier, width = 470.dp) { a.playGame(g) }
+                    }
+                }
+            }
+        }
+        if (sportsOn && games.any { it.state == "in" }) item("live") { GameShelf("Live now", live, favTeams, accent, a, multiview = true) { a.playGame(it) } }
         if (a.resume.value.isNotEmpty()) item("resume") { ResumeShelf(a, a.resume.value, accent) }
         if (recentChans.isNotEmpty()) { val f = focusFor(); item("recent") { ChannelShelf(a, "Recently watched", recentChans, guide, accent, f) } }
         if (favChans.isNotEmpty()) { val f = focusFor(); item("favs") { ChannelShelf(a, "Favorite channels", favChans, guide, accent, f) } }
@@ -259,12 +289,12 @@ private fun Shelf(title: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun Hero(g: Game, favs: Set<String>, accent: Color, compact: Boolean, modifier: Modifier, onClick: () -> Unit) {
+private fun Hero(g: Game, favs: Set<String>, accent: Color, compact: Boolean, modifier: Modifier, width: Dp? = null, onClick: () -> Unit) {
     val awayC = parseColor(g.away.color, Palette.card)
     val homeC = parseColor(g.home.color, Palette.card)
     Surface(
         onClick = onClick,
-        modifier = modifier.padding(horizontal = 48.dp).fillMaxWidth().height(if (compact) 150.dp else 260.dp),
+        modifier = (if (width != null) modifier.width(width) else modifier.padding(horizontal = 48.dp).fillMaxWidth()).height(if (compact) 150.dp else 260.dp),
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(24.dp)),
         colors = ClickableSurfaceDefaults.colors(containerColor = Palette.card, focusedContainerColor = Palette.card),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f),
@@ -282,7 +312,7 @@ private fun Hero(g: Game, favs: Set<String>, accent: Color, compact: Boolean, mo
             }
             Row(Modifier.weight(1f).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 HeroTeam(g.away, compact, Modifier.weight(1f))
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(260.dp)) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(if (width != null) 140.dp else 260.dp)) {
                     if (g.state == "pre") {
                         Text(fmtKickoff(g.start), color = Palette.text, fontSize = if (compact) 26.sp else 34.sp, fontWeight = FontWeight.SemiBold)
                     } else {
@@ -328,11 +358,11 @@ private fun StatusPill(g: Game) = when (g.state) {
 }
 
 @Composable
-private fun GameShelf(title: String, list: List<Game>, favs: Set<String>, accent: Color, a: MainActivity? = null, multiview: List<Game> = emptyList(), onPlay: (Game) -> Unit) {
+private fun GameShelf(title: String, list: List<Game>, favs: Set<String>, accent: Color, a: MainActivity? = null, multiview: Boolean = false, onPlay: (Game) -> Unit) {
     val rem = a?.reminders?.value ?: emptySet()
     Shelf(title) {
         LazyRow(contentPadding = PaddingValues(horizontal = 48.dp), horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-            if (a != null && multiview.size >= 2) item("multiview") { MultiviewCard(multiview.size.coerceAtMost(MultiviewActivity.MAX), accent) { a.multiview(multiview) } }
+            if (a != null && multiview) item("multiview") { MultiviewCard(MultiviewActivity.MAX, accent) { a.mvPicker.value = true } }
             items(list, key = { it.league + it.id }) { g -> GameCard(g, favs, accent, Modifier, gameKey(g) in rem, { a?.toggleReminder(g) }) { onPlay(g) } }
         }
     }
@@ -498,16 +528,35 @@ private fun GuideTab(a: MainActivity, c: LiveConfig?, accent: Color, favoritesOn
         if (selected == "★ Favorites") chans.filter { it.name in favs } else chans.filter { it.group == selected }
     }
     var focusedProg by remember { mutableStateOf<Pair<Channel, Programme?>?>(null) }
+    val gridState = rememberLazyListState()
+    val chipFocus = remember { FocusRequester() }
+    var gridFocused by remember { mutableStateOf(false) }
+    var toTop by remember { mutableStateOf(0) }
+    LaunchedEffect(toTop, selected) { gridState.scrollToItem(0) }
+    DisposableEffect(Unit) {
+        val h: () -> Boolean = { if (gridFocused) { toTop++; runCatching { chipFocus.requestFocus() }; true } else false }
+        a.tabBack = h
+        onDispose { if (a.tabBack === h) a.tabBack = null }
+    }
     val windowStart = remember { val n = System.currentTimeMillis(); n - n % (30 * 60_000L) }
     val look = a.look.value
     val windowMs = look.guideHours * 3_600_000L
 
     Column(Modifier.fillMaxSize()) {
         LazyRow(contentPadding = PaddingValues(horizontal = 48.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (chans.size >= 2) item("mv") {
+                Surface(
+                    onClick = { a.mvPicker.value = true },
+                    shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
+                    colors = ClickableSurfaceDefaults.colors(containerColor = Palette.card, focusedContainerColor = Palette.text, contentColor = Palette.text, focusedContentColor = Palette.bg),
+                    scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
+                ) { Text("⊞  Multiview", fontSize = 14.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), maxLines = 1) }
+            }
             items(groupNames, key = { it }) { g ->
                 val sel = g == selected
                 Surface(
                     onClick = { group = g },
+                    modifier = if (sel) Modifier.focusRequester(chipFocus) else Modifier,
                     shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
                     colors = ClickableSurfaceDefaults.colors(
                         containerColor = if (sel) accent.copy(alpha = 0.85f) else Palette.card,
@@ -530,7 +579,7 @@ private fun GuideTab(a: MainActivity, c: LiveConfig?, accent: Color, favoritesOn
                 )
             }
         }
-        BoxWithConstraints(Modifier.fillMaxSize().padding(start = 48.dp, end = 24.dp)) {
+        BoxWithConstraints(Modifier.fillMaxSize().padding(start = 48.dp, end = 24.dp).onFocusChanged { gridFocused = it.hasFocus }) {
             val chanW = if (look.guideLogos) 210.dp else 160.dp
             val gridW = maxWidth - chanW - 8.dp
             val dpPerMs = gridW / windowMs.toFloat()
@@ -539,7 +588,7 @@ private fun GuideTab(a: MainActivity, c: LiveConfig?, accent: Color, favoritesOn
                     val slots = look.guideHours * 2
                     for (i in 0 until slots) Text(fmtTime(windowStart + i * 30 * 60_000L), color = Palette.sub, fontSize = 13.sp, modifier = Modifier.width(gridW / slots))
                 }
-                LazyColumn(contentPadding = PaddingValues(bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                LazyColumn(state = gridState, contentPadding = PaddingValues(bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     items(rows, key = { it.index }) { ch ->
                         GuideRow(a, ch, guide[ch.tvgId], windowStart, windowMs, chanW, dpPerMs, accent) { focusedProg = it }
                     }
@@ -966,7 +1015,114 @@ private fun MultiviewCard(n: Int, accent: Color, onClick: () -> Unit) {
                 }
             }
             Text("Multiview", color = Palette.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 14.dp))
-            Text("Up to $n games at once", color = Palette.sub, fontSize = 12.sp)
+            Text("Pick up to $n channels", color = Palette.sub, fontSize = 12.sp)
+        }
+    }
+}
+
+@Composable
+private fun MultiviewPicker(a: MainActivity, accent: Color) {
+    val chans = a.channels.value
+    val guide = a.epg.value
+    val showAdult = a.look.value.adult && !a.profile.value.kids
+    val gameOpts by produceState<List<Pair<Channel, String>>?>(null, a.games.value, chans) { value = a.liveGameChannels() }
+    val sections = remember(chans, gameOpts, a.favorites.value, a.recents.value, showAdult) {
+        val byName = chans.associateBy { it.name }
+        val groups = chans.groupBy { it.group }.filterKeys { showAdult || !isAdultGroup(it) }
+        buildList<Pair<String, List<Pair<Channel, String>>>> {
+            add("Live games" to gameOpts.orEmpty())
+            add("Favorites" to chans.filter { it.name in a.favorites.value }.map { it to it.name })
+            add("Recently watched" to a.recents.value.mapNotNull { byName[it] }.map { it to it.name })
+            groups.forEach { (g, list) -> add(g to list.map { it to it.name }) }
+        }.filter { it.second.isNotEmpty() || it.first == "Live games" }
+    }
+    var section by remember { mutableStateOf(0) }
+    val opts = sections.getOrNull(section)?.second.orEmpty()
+    val picked = remember { mutableStateListOf<Pair<Channel, String>>() }
+    val first = remember { FocusRequester() }
+    val startReq = remember { FocusRequester() }
+    val now = System.currentTimeMillis()
+    BackHandler { a.mvPicker.value = false }
+    LaunchedEffect(Unit) { delay(150); runCatching { first.requestFocus() } }
+    Box(Modifier.fillMaxSize().background(Palette.bg.copy(alpha = 0.97f))) {
+        Column(Modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 28.dp)) {
+            Text("Multiview", color = Palette.text, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            Text("Pick 2 to 4 channels. Each one uses one of your provider streams.", color = Palette.sub, fontSize = 14.sp, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
+            Row(Modifier.fillMaxSize()) {
+                LazyColumn(Modifier.width(240.dp), verticalArrangement = Arrangement.spacedBy(4.dp), contentPadding = PaddingValues(bottom = 40.dp)) {
+                    items(sections.size, key = { sections[it].first }) { i ->
+                        val (name, list) = sections[i]
+                        Surface(
+                            onClick = { section = i },
+                            modifier = Modifier.fillMaxWidth().height(38.dp).onFocusChanged { if (it.isFocused) section = i }.then(if (i == 0) Modifier.focusRequester(first) else Modifier),
+                            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
+                            colors = ClickableSurfaceDefaults.colors(containerColor = if (i == section) Palette.card else Color.Transparent, focusedContainerColor = Palette.text, contentColor = if (i == section) Palette.text else Palette.sub, focusedContentColor = Palette.bg),
+                            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f),
+                        ) {
+                            Row(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(name, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                                Text(if (name == "Live games" && gameOpts == null) "…" else "${list.size}", fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.width(20.dp))
+                LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(bottom = 40.dp)) {
+                    if (opts.isEmpty()) item("empty") {
+                        Text(if (gameOpts == null) "Finding live games…" else "No live games with a channel right now.", color = Palette.sub, fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp))
+                    }
+                    items(opts.size, key = { "$section-${opts[it].first.index}" }) { i ->
+                        val o = opts[i]
+                        val n = picked.indexOfFirst { it.first.index == o.first.index }
+                        val onNow = guide[o.first.tvgId]?.firstOrNull { now in it.start until it.stop }?.title
+                        PickRow(o.second, onNow, n + 1, accent) {
+                            if (n >= 0) picked.removeAt(n) else if (picked.size < MultiviewActivity.MAX) picked += o
+                        }
+                    }
+                }
+                Spacer(Modifier.width(28.dp))
+                Column(Modifier.width(280.dp).focusRestorer { startReq }.focusGroup()) {
+                    PickButton(if (picked.size >= 2) "Start multiview" else "Pick at least 2", picked.size >= 2, accent, Modifier.focusRequester(startReq)) { a.startMultiview(picked.toList()) }
+                    Spacer(Modifier.height(10.dp))
+                    PickButton("Cancel", false, accent) { a.mvPicker.value = false }
+                    Spacer(Modifier.height(20.dp))
+                    Text("Selected ${picked.size} of ${MultiviewActivity.MAX}", color = Palette.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    picked.forEachIndexed { i, p -> Text("${i + 1}.  ${p.second}", color = Palette.sub, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp)) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PickButton(label: String, primary: Boolean, accent: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth().height(44.dp),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
+        colors = ClickableSurfaceDefaults.colors(containerColor = if (primary) accent else Palette.card, focusedContainerColor = Palette.text, contentColor = Palette.text, focusedContentColor = Palette.bg),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.03f),
+    ) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(label, fontSize = 15.sp, fontWeight = FontWeight.SemiBold) } }
+}
+
+@Composable
+private fun PickRow(label: String, sub: String?, n: Int, accent: Color, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().height(48.dp),
+        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
+        colors = ClickableSurfaceDefaults.colors(containerColor = Palette.card, focusedContainerColor = Palette.text, contentColor = Palette.text, focusedContentColor = Palette.bg),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.01f),
+    ) {
+        Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(24.dp).clip(CircleShape).background(if (n > 0) accent else Color(0x22FFFFFF)), contentAlignment = Alignment.Center) {
+                if (n > 0) Text("$n", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(label, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (sub != null) Text(sub, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.alpha(0.7f))
+            }
         }
     }
 }

@@ -130,7 +130,6 @@ fun httpGet(url: String, timeoutMs: Int = 10000): String {
     try { return s.bufferedReader().use { it.readText() } } finally { conn.disconnect() }
 }
 
-private val attrRe = Regex("""([\w-]+)="([^"]*)"""")
 
 fun parseM3u(text: String): List<Channel> {
     val out = ArrayList<Channel>()
@@ -143,15 +142,20 @@ fun parseM3u(text: String): List<Channel> {
             pending != null -> {
                 val info = pending
                 val header = if (info.contains("\",")) info.substringBeforeLast("\",") + "\"" else info.substringBefore(",")
-                val attrs = attrRe.findAll(header).associate { it.groupValues[1] to it.groupValues[2] }
+                fun attr(k: String): String? {
+                    val i = header.indexOf(" $k=\"").takeIf { it >= 0 } ?: return null
+                    val from = i + k.length + 3
+                    val end = header.indexOf('"', from)
+                    return if (end < 0) null else header.substring(from, end)
+                }
                 val title = info.substringAfterLast("\",", info.substringAfter(",")).trim()
                 out += Channel(
                     index = out.size,
-                    name = attrs["tvg-name"]?.takeIf { it.isNotBlank() && title.isBlank() } ?: title,
-                    number = attrs["tvg-chno"] ?: attrs["channel-number"] ?: "",
-                    tvgId = attrs["tvg-id"] ?: "",
-                    logo = attrs["tvg-logo"] ?: "",
-                    group = attrs["group-title"] ?: "Channels",
+                    name = attr("tvg-name")?.takeIf { it.isNotBlank() && title.isBlank() } ?: title,
+                    number = attr("tvg-chno") ?: attr("channel-number") ?: "",
+                    tvgId = attr("tvg-id") ?: "",
+                    logo = attr("tvg-logo") ?: "",
+                    group = attr("group-title") ?: "Channels",
                     url = line,
                 )
                 pending = null
@@ -361,9 +365,9 @@ class Settings(context: Context) {
 fun parseLiveConfig(text: String?, settings: Settings): LiveConfig {
     val live = text?.let { runCatching { JSONObject(it).optJSONObject("livetv") }.getOrNull() } ?: JSONObject()
     fun list(key: String, def: List<String>) = live.optJSONArray(key)?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: def
-    val aliases = live.optJSONObject("network_aliases")?.let { o ->
-        o.keys().asSequence().associateWith { k -> o.optJSONArray(k)?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList() }
-    } ?: emptyMap()
+    val aliases = DEFAULT_ALIASES + (live.optJSONObject("network_aliases")?.let { o ->
+        o.keys().asSequence().associateWith { k -> o.optJSONArray(k)?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList<String>() }
+    } ?: emptyMap<String, List<String>>())
     return LiveConfig(
         m3uUrl = settings.m3uOverride.ifBlank { live.optString("m3u_url", "") },
         epgUrl = settings.epgOverride.ifBlank { live.optString("epg_url", "") },
@@ -403,24 +407,88 @@ object Repo {
 
     fun cacheDir(ctx: Context) = File(ctx.filesDir, "cache").apply { mkdirs() }
 
+    private fun chanCache(ctx: Context) = File(cacheDir(ctx), "channels.tsv")
+
+    fun playlistAgeMs(ctx: Context) = chanCache(ctx).let { if (it.exists()) System.currentTimeMillis() - it.lastModified() else Long.MAX_VALUE }
+
     fun loadPlaylist(ctx: Context, url: String): List<Channel> {
-        val f = File(cacheDir(ctx), "playlist.m3u")
-        val text = runCatching { httpGet(url, 20000).also { f.writeText(it) } }.getOrElse { if (f.exists()) f.readText() else throw it }
-        return parseM3u(text).also { channels = it }
+        val list = parseM3u(httpGet(url, 20000))
+        runCatching {
+            val tmp = File(cacheDir(ctx), "channels.tsv.tmp")
+            tmp.bufferedWriter().use { w ->
+                w.append("#url\t").append(clean(url)).append('\n')
+                list.forEach { c -> w.append(listOf(c.name, c.number, c.tvgId, c.logo, c.group, c.url).joinToString("\t") { clean(it) }).append('\n') }
+            }
+            tmp.renameTo(chanCache(ctx))
+        }
+        return list.also { channels = it }
     }
 
-    fun loadEpg(url: String, chans: List<Channel>) {
+    private fun epgCache(ctx: Context) = File(cacheDir(ctx), "epg.tsv")
+
+    fun epgAgeMs(ctx: Context) = epgCache(ctx).let { if (it.exists()) System.currentTimeMillis() - it.lastModified() else Long.MAX_VALUE }
+
+    fun loadEpg(ctx: Context, url: String, chans: List<Channel>) {
         val wanted = chans.map { it.tvgId }.filter { it.isNotBlank() }.toSet()
         runCatching {
             val (conn, s) = httpOpen(url, 20000)
-            try { epg = parseEpg(s, wanted) } finally { conn.disconnect() }
+            val fresh = try { parseEpg(s, wanted) } finally { conn.disconnect() }
+            epg = fresh
+            runCatching { saveEpg(ctx, fresh) }
         }
     }
 
-    fun loadCachedPlaylist(ctx: Context) {
+    private fun clean(s: String) = s.replace('\t', ' ').replace('\n', ' ').replace('\r', ' ')
+
+    /** The parsed guide window, so the next launch shows it without re-downloading the full XMLTV. */
+    private fun saveEpg(ctx: Context, m: Map<String, List<Programme>>) {
+        val tmp = File(cacheDir(ctx), "epg.tsv.tmp")
+        tmp.bufferedWriter().use { w ->
+            m.forEach { (id, list) ->
+                list.forEach { p ->
+                    w.append(clean(id)).append('\t').append(p.start.toString()).append('\t').append(p.stop.toString())
+                        .append('\t').append(clean(p.title)).append('\t').append(clean(p.desc.take(300))).append('\n')
+                }
+            }
+        }
+        tmp.renameTo(epgCache(ctx))
+    }
+
+    fun loadCachedEpg(ctx: Context) {
+        if (epg.isNotEmpty()) return
+        val f = epgCache(ctx)
+        if (!f.exists()) return
+        val now = System.currentTimeMillis()
+        runCatching {
+            val m = HashMap<String, ArrayList<Programme>>()
+            f.bufferedReader().useLines { lines ->
+                lines.forEach { l ->
+                    val p = l.split('\t', limit = 5)
+                    val stop = p.getOrNull(2)?.toLongOrNull() ?: return@forEach
+                    if (p.size < 5 || stop < now) return@forEach
+                    m.getOrPut(p[0]) { ArrayList() } += Programme(p[1].toLongOrNull() ?: return@forEach, stop, p[3], p[4])
+                }
+            }
+            epg = m
+        }
+    }
+
+    /** [url] skips the cache when it was saved for a different playlist. */
+    fun loadCachedPlaylist(ctx: Context, url: String? = null) {
         if (channels.isNotEmpty()) return
-        val f = File(cacheDir(ctx), "playlist.m3u")
-        if (f.exists()) channels = parseM3u(f.readText())
+        val f = chanCache(ctx)
+        if (!f.exists()) return
+        runCatching {
+            val out = ArrayList<Channel>(50_000)
+            f.bufferedReader().useLines { lines ->
+                lines.forEach { l ->
+                    if (l.startsWith("#url\t")) { if (url != null && l.substring(5) != clean(url)) return@runCatching; return@forEach }
+                    val p = l.split('\t')
+                    if (p.size == 6) out += Channel(index = out.size, name = p[0], number = p[1], tvgId = p[2], logo = p[3], group = p[4], url = p[5])
+                }
+            }
+            channels = out
+        }
     }
 }
 
@@ -460,3 +528,19 @@ fun dueKickoff(games: List<Game>, favs: Set<String>, reminders: Set<String>): Ga
             g.start in (now - 20 * 60_000)..(now + 2 * 60_000)
     }
 }
+
+/** ESPN's short network names → how IPTV playlists usually name the channel. */
+val DEFAULT_ALIASES = mapOf(
+    "USA Net" to listOf("USA Network", "USA"),
+    "CBSSN" to listOf("CBS Sports Network"),
+    "FS1" to listOf("Fox Sports 1"),
+    "FS2" to listOf("Fox Sports 2"),
+    "BTN" to listOf("Big Ten Network"),
+    "SECN" to listOf("SEC Network"),
+    "ACCN" to listOf("ACC Network"),
+    "NBA TV" to listOf("NBATV"),
+    "MLBN" to listOf("MLB Network"),
+    "NHLN" to listOf("NHL Network"),
+    "NFL Net" to listOf("NFL Network"),
+    "TruTV" to listOf("truTV", "Tru TV"),
+)

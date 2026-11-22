@@ -317,7 +317,7 @@ async function init() {
   $("#push").onclick = () => run("/api/box/provision", provisionBody({ configOnly: true }));
   $("#export").onclick = () => {
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([JSON.stringify({ onnVanilla: 1, setup: S }, null, 2)], { type: "application/json" }));
+    a.href = URL.createObjectURL(new Blob([JSON.stringify({ onnVanilla: 1, setup: { ...S, xcUser: undefined, xcPass: undefined } }, null, 2)], { type: "application/json" }));
     a.download = "onn-vanilla-settings.json";
     a.click();
     URL.revokeObjectURL(a.href);

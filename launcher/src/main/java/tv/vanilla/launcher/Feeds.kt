@@ -103,6 +103,7 @@ fun fetchNews(urls: List<String>, perFeed: Int = 8): List<Headline> {
     return (0 until perFeed).flatMap { i -> lists.mapNotNull { it.getOrNull(i) } }
 }
 
+private val TRACKER = Regex("""pixel|tracking|1x1|spacer""", RegexOption.IGNORE_CASE)
 private val IMG = Regex("""<img[^>]+src=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
 
 private fun parseFeed(xml: String): List<Headline> {
@@ -140,7 +141,7 @@ private fun parseFeed(xml: String): List<Headline> {
                     }
                 }
             } else if (p.eventType == XmlPullParser.END_TAG && (p.name == "item" || p.name == "entry")) {
-                if (title.isNotBlank()) out += Headline(source, title, image, at)
+                if (title.isNotBlank()) out += Headline(source, title, image.takeUnless { TRACKER.containsMatchIn(it) } ?: "", at)
                 inItem = false
             }
         }

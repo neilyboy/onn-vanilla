@@ -234,7 +234,9 @@ private fun NewsCards(items: List<Headline>, theme: VanillaTheme, wide: Boolean)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 var loaded by remember(h.image) { mutableStateOf(false) }
                 if (h.image.isNotBlank()) {
-                    AsyncImage(h.image, null, contentScale = ContentScale.Crop, onSuccess = { loaded = true }, modifier = if (loaded) Modifier.size(if (wide) 200.dp else 112.dp, if (wide) 112.dp else 63.dp).clip(RoundedCornerShape(10.dp)) else Modifier.size(1.dp))
+                    // A fixed decode size: Coil would otherwise decode at the 1 dp placeholder size and upscale it into a flat colour.
+                    AsyncImage(coil.request.ImageRequest.Builder(LocalContext.current).data(h.image).size(400, 225).build(), null, contentScale = ContentScale.Crop,
+                        onSuccess = { loaded = it.result.drawable.intrinsicWidth > 40 }, modifier = if (loaded) Modifier.size(if (wide) 200.dp else 112.dp, if (wide) 112.dp else 63.dp).clip(RoundedCornerShape(10.dp)) else Modifier.size(1.dp))
                     if (loaded) Spacer(Modifier.width(12.dp))
                 }
                 Column {

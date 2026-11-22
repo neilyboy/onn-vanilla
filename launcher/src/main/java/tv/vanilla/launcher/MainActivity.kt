@@ -127,7 +127,13 @@ class MainActivity : ComponentActivity() {
         intent ?: return false
         intent.getStringExtra("config_b64")?.let { b64 ->
             val text = runCatching { String(Base64.decode(b64, Base64.DEFAULT)) }.getOrNull()
-            text?.let { configRepo.applyInline(it) }?.let { config.value = it; lifecycleScope.launch { reloadWallpapers(it); refreshWeather(it) } }
+            text?.let { configRepo.applyInline(it) }?.let {
+                // Settings sent from the setup app replace a style picked earlier on the box.
+                iconOverride.value = null
+                getSharedPreferences("home", MODE_PRIVATE).edit().remove("icon_style").apply()
+                config.value = it
+                lifecycleScope.launch { reloadWallpapers(it); refreshWeather(it) }
+            }
             if (intent.getBooleanExtra("reset_dock", true)) setDock(null)
         }
         val url = intent.getStringExtra("config_url") ?: return false

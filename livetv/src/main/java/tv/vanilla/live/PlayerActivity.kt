@@ -116,7 +116,7 @@ class PlayerActivity : ComponentActivity() {
         })
         tune(intent.getIntExtra("index", 0))
 
-        setContent { PlayerScreen() }
+        setContent { ScaledLook(this) { PlayerScreen() } }
     }
 
     private fun tune(i: Int, keepPrevious: Boolean = false) {
@@ -252,23 +252,30 @@ class PlayerActivity : ComponentActivity() {
 
     @Composable
     private fun ScoreBar(all: List<Game>, mode: Int, modifier: Modifier) {
-        val live = all.filter { it.state == "in" && (mode == 2 || isFavGame(it, Repo.favTeams)) }
+        val favs = Repo.favTeams
+        val live = all.filter { it.state == "in" && (mode == 2 || isFavGame(it, favs)) }.sortedByDescending { isFavGame(it, favs) }
         if (live.isEmpty()) return
+        val perPage = 4
+        val pages = (live.size + perPage - 1) / perPage
         var i by remember { mutableIntStateOf(0) }
-        LaunchedEffect(live.size) { while (true) { delay(8_000); i++ } }
-        val g = live[i % live.size]
+        LaunchedEffect(pages) { while (true) { delay(10_000); i++ } }
+        val page = i % pages
         Row(
             modifier.clip(RoundedCornerShape(50)).background(Color(0xB3000000)).padding(horizontal = 16.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            listOf(g.away, g.home).forEachIndexed { n, t ->
-                if (n == 1) Spacer(Modifier.width(14.dp))
-                AsyncImage(t.logo, null, Modifier.size(20.dp))
-                Text("  ${t.abbr}  ", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                Text(t.score, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            live.drop(page * perPage).take(perPage).forEachIndexed { n, g ->
+                if (n > 0) Box(Modifier.padding(horizontal = 14.dp).size(width = 1.dp, height = 18.dp).background(Color(0x40FFFFFF)))
+                listOf(g.away, g.home).forEachIndexed { k, t ->
+                    if (k == 1) Spacer(Modifier.width(8.dp))
+                    AsyncImage(t.logo, null, Modifier.size(18.dp))
+                    val fav = t.abbr.uppercase() in favs
+                    Text(" ${t.abbr} ", color = if (fav) Color.White else Color(0xCCFFFFFF), fontSize = 13.sp, fontWeight = if (fav) FontWeight.Bold else FontWeight.Medium)
+                    Text(t.score, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                }
+                Text("  ${g.detail}", color = Palette.sub, fontSize = 12.sp, maxLines = 1)
             }
-            Text("   ${g.detail}", color = Palette.sub, fontSize = 13.sp)
-            if (live.size > 1) Text("   ${i % live.size + 1}/${live.size}", color = Color(0x66FFFFFF), fontSize = 11.sp)
+            if (pages > 1) Text("   ${page + 1}/$pages", color = Color(0x66FFFFFF), fontSize = 11.sp)
         }
     }
 

@@ -97,7 +97,7 @@ fun LiveApp(a: MainActivity) {
     var tab by remember { mutableStateOf(Tab.Home) }
     LaunchedEffect(a.searchNow.intValue) { if (a.searchNow.intValue > 0) tab = Tab.Search }
     val d = LocalDensity.current
-    CompositionLocalProvider(LocalDensity provides Density(d.density * look.scale, d.fontScale * look.text)) {
+    CompositionLocalProvider(LocalDensity provides Density(d.density * look.scale * BASE_SCALE, d.fontScale * look.text)) {
     Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(lerp(Palette.bg, Color.White, 0.04f), Palette.bg, Palette.bg)))) {
         if (a.status.value == "setup") { SetupScreen(a, accent); return@Box }
         a.pinFor.value?.let { p -> PinPad("Enter PIN for ${p.name}", p.pin.length, accent, a::unlock) { a.pinFor.value = null }; return@Box }
@@ -176,7 +176,7 @@ private fun TopBar(tabs: List<Tab>, tab: Tab, accent: Color, profile: Profile, p
             Row(Modifier.padding(start = 5.dp, end = 16.dp, top = 5.dp, bottom = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                 Avatar(profile, profileIdx, 24.dp)
                 Spacer(Modifier.width(9.dp))
-                Text(profile.name, fontSize = 15.sp)
+                Text(profile.name, fontSize = 15.sp, maxLines = 1, softWrap = false)
             }
         }
         Text(now.format(timeFmt), color = Palette.sub, fontSize = 20.sp)

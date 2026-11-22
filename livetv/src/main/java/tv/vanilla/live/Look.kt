@@ -25,7 +25,7 @@ data class Look(
     }
 
     companion object {
-        val SCALES = listOf(0.8f, 0.9f, 1f, 1.1f, 1.25f, 1.4f)
+        val SCALES = listOf(0.7f, 0.8f, 0.9f, 1f, 1.15f, 1.3f, 1.45f)
         val TEXTS = listOf(0.9f to "Small", 1f to "Normal", 1.15f to "Large", 1.3f to "Extra large")
         val ROWS = listOf("Compact", "Normal", "Large")
         val HOURS = listOf(2, 3, 4)

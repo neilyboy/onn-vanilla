@@ -61,7 +61,7 @@ class VodPlayerActivity : ComponentActivity() {
         player.prepare()
         if (start > 0) player.seekTo(start)
         player.playWhenReady = true
-        setContent { Screen() }
+        setContent { ScaledLook(this) { Screen() } }
     }
 
     private fun save() {

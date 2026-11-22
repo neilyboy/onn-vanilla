@@ -30,7 +30,7 @@ object Vod {
     fun cats(xc: Xc, series: Boolean, adult: Boolean): List<VodCat> = cached("c$series") {
         objs(JSONArray(httpGet(xc.api(if (series) "get_series_categories" else "get_vod_categories"), 30000)))
             .map { VodCat(it.optString("category_id"), it.optString("category_name")) }
-    }.filter { adult || !isAdultGroup(it.name) }
+    }.filter { adult || !isAdultGroup(it.name) }.sortedBy { isAdultGroup(it.name) }
 
     fun items(xc: Xc, series: Boolean, catId: String, adult: Boolean): List<VodItem> = cached("i$series:$catId") {
         objs(JSONArray(httpGet(xc.api(if (series) "get_series" else "get_vod_streams", "&category_id=$catId"), 60000))).map { o ->
@@ -39,7 +39,7 @@ object Vod {
                 name = o.optString("name"),
                 poster = o.str(if (series) "cover" else "stream_icon"),
                 ext = o.str("container_extension"),
-                rating = o.str("rating"),
+                rating = o.str("rating").takeIf { (it.toDoubleOrNull() ?: 1.0) > 0 } ?: "",
                 year = o.str("year").ifBlank { o.str("releaseDate").take(4) },
                 plot = o.str("plot"),
                 series = series,

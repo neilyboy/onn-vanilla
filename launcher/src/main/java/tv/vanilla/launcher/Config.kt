@@ -35,6 +35,9 @@ data class LauncherConfig(
     val wallpaperManifestUrl: String,
     val apps: List<AppEntry>,
     val iconStyle: String = "original",
+    val calendars: List<String> = emptyList(),
+    val newsFeeds: List<String> = emptyList(),
+    val alerts: Boolean = true,
 ) {
     val hasWeather get() = showWeather && !latitude.isNaN() && !longitude.isNaN()
 
@@ -54,6 +57,9 @@ data class LauncherConfig(
                 wallpaperIntervalSec = ui.optInt("wallpaper_interval_sec", 45).coerceAtLeast(10),
                 idleTimeoutSec = ui.optInt("idle_timeout_sec", 300),
                 iconStyle = ui.optString("icon_style", "original"),
+                calendars = strings(root.optJSONObject("feeds")?.optJSONArray("calendars")),
+                newsFeeds = strings(root.optJSONObject("feeds")?.optJSONArray("news")),
+                alerts = root.optJSONObject("feeds")?.optBoolean("alerts", true) ?: true,
                 scale = ui.optDouble("scale", 1.0).toFloat().coerceIn(0.6f, 1.6f),
                 kenBurns = ui.optBoolean("ken_burns", true),
                 showWeather = ui.optBoolean("show_weather", true),
@@ -68,6 +74,8 @@ data class LauncherConfig(
                 apps = appsFromJson(apps).map { it.copy(iconUrl = resolve(baseUrl, it.iconUrl)) },
             )
         }
+
+        private fun strings(a: JSONArray?) = (0 until (a?.length() ?: 0)).map { a!!.optString(it) }.filter { it.isNotBlank() }
 
         fun resolve(base: String?, ref: String): String {
             if (ref.isBlank()) return ""

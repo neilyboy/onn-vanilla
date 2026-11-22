@@ -58,3 +58,5 @@ pre{background:#07080b;border:1px solid var(--line);border-radius:12px;padding:1
 .profile{display:grid;grid-template-columns:150px 44px 82px 70px 72px 1fr 1fr 36px;gap:8px;align-items:center}
 .profile input[type=text]{width:100%}.profile input[type=color]{width:40px;height:34px;padding:2px;border-radius:8px;background:none;border:1px solid #333}.profile .toggle{white-space:nowrap}
 @media(max-width:800px){.profile{grid-template-columns:1fr}}
+label.check{display:flex;gap:8px;align-items:center;flex-direction:row}
+textarea{width:100%;box-sizing:border-box;background:var(--card,#1b1e26);color:var(--text);border:1px solid #333a48;border-radius:8px;padding:8px;font:inherit;font-size:13px}

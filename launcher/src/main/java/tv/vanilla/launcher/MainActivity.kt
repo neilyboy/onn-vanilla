@@ -29,6 +29,22 @@ class MainActivity : ComponentActivity() {
     val dock = mutableStateOf<List<AppEntry>?>(null)
     val lastInput = mutableLongStateOf(System.currentTimeMillis())
     val idle = mutableStateOf(false)
+    val agenda = mutableStateOf<List<CalEvent>>(emptyList())
+    val news = mutableStateOf<List<Headline>>(emptyList())
+    val alerts = mutableStateOf<List<Alert>>(emptyList())
+
+    private suspend fun feedLoop() {
+        while (true) {
+            config.value?.let { c ->
+                withContext(Dispatchers.IO) {
+                    agenda.value = if (c.calendars.isEmpty()) emptyList() else fetchCalendar(c.calendars)
+                    news.value = if (c.newsFeeds.isEmpty()) emptyList() else fetchNews(c.newsFeeds)
+                    alerts.value = if (c.alerts && c.hasWeather) fetchAlerts(c.latitude, c.longitude) else emptyList()
+                }
+            }
+            delay(10 * 60_000L)
+        }
+    }
     private val iconOverride = mutableStateOf<String?>(null)
 
     /** Icon style picked on the box (tile menu) wins over the setup app's default. */
@@ -95,6 +111,7 @@ class MainActivity : ComponentActivity() {
 
         lifecycleScope.launch { configLoop() }
         lifecycleScope.launch { weatherLoop() }
+        lifecycleScope.launch { delay(3_000); feedLoop() }
     }
 
     override fun onNewIntent(intent: Intent) {

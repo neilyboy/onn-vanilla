@@ -118,9 +118,14 @@ fun LauncherScreen(
                     IconTile(Icons.Outlined.Settings, theme, size = 42.dp, onClick = onSettings, onLongClick = { showSetup = true })
                 }
                 Spacer(Modifier.weight(1f))
-                ClockWeather(cfg, theme, weather, compact = idle)
+                Column(horizontalAlignment = Alignment.End) {
+                    ClockWeather(cfg, theme, weather, compact = idle)
+                    if (!idle) Agenda(activity.agenda.value, theme)
+                }
             }
+            activity.alerts.value.firstOrNull()?.let { AlertBanner(it, activity.alerts.value.size, theme) }
             Spacer(Modifier.weight(1f))
+            if (!idle) NewsStrip(activity.news.value, theme)
             if (cfg.greeting.isNotBlank() && !idle) {
                 Text(cfg.greeting, color = theme.subText, fontSize = 16.sp, modifier = Modifier.padding(bottom = 12.dp, start = 4.dp))
             }
@@ -534,4 +539,54 @@ private fun accentMatrix(c: Color): ColorMatrix {
         return floatArrayOf(0.299f * k, 0.587f * k, 0.114f * k, 0f, lo * 255f)
     }
     return ColorMatrix(row(c.red) + row(c.green) + row(c.blue) + floatArrayOf(0f, 0f, 0f, 1f, 0f))
+}
+
+@Composable
+private fun Agenda(events: List<CalEvent>, theme: VanillaTheme) {
+    if (events.isEmpty()) return
+    val today = java.time.LocalDate.now()
+    val timeFmt = remember { DateTimeFormatter.ofPattern("h:mm a") }
+    val dayFmt = remember { DateTimeFormatter.ofPattern("EEE") }
+    Column(Modifier.padding(top = 14.dp).widthIn(max = 300.dp), horizontalAlignment = Alignment.End) {
+        events.take(4).forEach { e ->
+            val d = e.start.toLocalDate()
+            val day = when (d) { today -> "Today"; today.plusDays(1) -> "Tomorrow"; else -> d.format(dayFmt) }
+            val time = if (e.allDay) day else "$day ${e.start.format(timeFmt)}"
+            Row(Modifier.padding(top = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(e.title, color = theme.text, fontSize = 13.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                Text("  $time", color = theme.subText, fontSize = 12.sp, maxLines = 1)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AlertBanner(a: Alert, count: Int, theme: VanillaTheme) {
+    val color = when (a.severity) { "Extreme", "Severe" -> Color(0xFFD93A3A); "Moderate" -> Color(0xFFE08A1E); else -> Color(0xFF6B7280) }
+    Row(
+        Modifier.padding(top = 12.dp).clip(RoundedCornerShape(12.dp)).background(color.copy(alpha = 0.92f)).padding(horizontal = 14.dp, vertical = 8.dp).widthIn(max = 760.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Outlined.Warning, null, tint = Color.White, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(a.event.uppercase(), color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.width(10.dp))
+        Text(a.headline, color = Color.White, fontSize = 12.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        if (count > 1) Text("  +${count - 1} more", color = Color(0xCCFFFFFF), fontSize = 12.sp)
+    }
+}
+
+@Composable
+private fun NewsStrip(items: List<Headline>, theme: VanillaTheme) {
+    if (items.isEmpty()) return
+    var i by remember { mutableStateOf(0) }
+    LaunchedEffect(items) { while (true) { delay(9_000); i++ } }
+    val h = items[i % items.size]
+    androidx.compose.animation.Crossfade(h, label = "news") { cur ->
+        Row(Modifier.padding(bottom = 14.dp, start = 4.dp).widthIn(max = 900.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (cur.source.isNotBlank()) Text(cur.source.uppercase(), color = theme.accent, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            Spacer(Modifier.width(10.dp))
+            Text(cur.title, color = theme.text, fontSize = 14.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        }
+    }
 }

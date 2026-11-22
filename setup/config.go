@@ -23,6 +23,10 @@ type Setup struct {
 	Clock24         bool           `json:"clock24"`
 	ShowForecast    bool           `json:"showForecast"`
 	Greeting        string         `json:"greeting"`
+	Calendars       string         `json:"calendars,omitempty"`
+	NewsWorld       bool           `json:"newsWorld,omitempty"`
+	NewsLocal       string         `json:"newsLocal,omitempty"`
+	NoAlerts        bool           `json:"noAlerts,omitempty"`
 	IdleMinutes     int            `json:"idleMinutes"`
 	Scale           float64        `json:"scale"`
 	IconStyle       string         `json:"iconStyle,omitempty"`
@@ -149,6 +153,9 @@ func (s Setup) boxConfig() (map[string]any, error) {
 			"show_weather": s.Latitude != nil, "show_forecast": s.ShowForecast, "show_settings": true,
 			"greeting": s.Greeting, "scale": scale, "icon_style": s.IconStyle,
 		},
+		"feeds": map[string]any{
+			"calendars": lines(s.Calendars), "news": newsFeeds(s), "alerts": !s.NoAlerts,
+		},
 		"weather": map[string]any{
 			"latitude": s.Latitude, "longitude": s.Longitude, "unit": unit, "location_name": s.Location,
 		},
@@ -186,4 +193,26 @@ func xcConfig(s Setup) any {
 		return nil
 	}
 	return map[string]any{"username": s.XcUser, "password": s.XcPass}
+}
+
+// WorldNewsFeeds are used when the user ticks "World headlines" in the wizard.
+var WorldNewsFeeds = []string{"https://feeds.bbci.co.uk/news/world/rss.xml", "https://feeds.npr.org/1004/rss.xml"}
+
+func newsFeeds(s Setup) []string {
+	f := lines(s.NewsLocal)
+	if s.NewsWorld {
+		f = append(f, WorldNewsFeeds...)
+	}
+	return f
+}
+
+// lines splits a textarea value into its non-empty trimmed lines.
+func lines(v string) []string {
+	out := []string{}
+	for _, l := range strings.Split(v, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			out = append(out, l)
+		}
+	}
+	return out
 }

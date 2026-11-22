@@ -37,16 +37,29 @@ private fun expand(ev: CalEvent, rule: String?, from: ZonedDateTime, to: ZonedDa
         "YEARLY" -> { t -> t.plusYears(parts["INTERVAL"]?.toLongOrNull() ?: 1) }
         else -> return listOf(ev)
     }
+    val byDay = parts["BYDAY"]?.split(',')?.mapNotNull { d -> DAYS[d.takeLast(2)] }.orEmpty()
+    // Monthly/yearly "2nd Sunday"-style rules aren't supported; skip them rather than show wrong dates.
+    if (byDay.isNotEmpty() && parts["FREQ"] != "WEEKLY") return emptyList()
     val out = ArrayList<CalEvent>()
     var t = ev.start
     var n = 0
     val count = parts["COUNT"]?.toIntOrNull() ?: Int.MAX_VALUE
     while (t.isBefore(to) && n < count && n < 5000 && (until == null || !t.isAfter(until))) {
-        if (!t.isBefore(from)) out += ev.copy(start = t)
-        t = step(t); n++
+        val hits = if (byDay.isEmpty()) listOf(t) else byDay.map { t.with(java.time.temporal.ChronoField.DAY_OF_WEEK, it.value.toLong()) }.filter { !it.isBefore(ev.start) }.sorted()
+        for (h in hits) {
+            if (n >= count || (until != null && h.isAfter(until))) break
+            if (!h.isBefore(from) && h.isBefore(to)) out += ev.copy(start = h)
+            n++
+        }
+        t = step(t)
     }
     return out
 }
+
+private val DAYS = mapOf(
+    "MO" to java.time.DayOfWeek.MONDAY, "TU" to java.time.DayOfWeek.TUESDAY, "WE" to java.time.DayOfWeek.WEDNESDAY,
+    "TH" to java.time.DayOfWeek.THURSDAY, "FR" to java.time.DayOfWeek.FRIDAY, "SA" to java.time.DayOfWeek.SATURDAY, "SU" to java.time.DayOfWeek.SUNDAY,
+)
 
 private fun parseIcsTime(v: String, tzid: String?, zone: ZoneId): Pair<ZonedDateTime, Boolean> {
     if (v.length == 8) return LocalDate.parse(v, DateTimeFormatter.BASIC_ISO_DATE).atStartOfDay(zone) to true

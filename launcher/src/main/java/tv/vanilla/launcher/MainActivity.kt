@@ -33,15 +33,15 @@ class MainActivity : ComponentActivity() {
     val news = mutableStateOf<List<Headline>>(emptyList())
     val alerts = mutableStateOf<List<Alert>>(emptyList())
 
+    private suspend fun refreshFeeds(c: LauncherConfig) = withContext(Dispatchers.IO) {
+        agenda.value = if (c.calendars.isEmpty()) emptyList() else fetchCalendar(c.calendars)
+        news.value = if (c.newsFeeds.isEmpty()) emptyList() else fetchNews(c.newsFeeds)
+        alerts.value = if (c.alerts && c.hasWeather) fetchAlerts(c.latitude, c.longitude) else emptyList()
+    }
+
     private suspend fun feedLoop() {
         while (true) {
-            config.value?.let { c ->
-                withContext(Dispatchers.IO) {
-                    agenda.value = if (c.calendars.isEmpty()) emptyList() else fetchCalendar(c.calendars)
-                    news.value = if (c.newsFeeds.isEmpty()) emptyList() else fetchNews(c.newsFeeds)
-                    alerts.value = if (c.alerts && c.hasWeather) fetchAlerts(c.latitude, c.longitude) else emptyList()
-                }
-            }
+            config.value?.let { refreshFeeds(it) }
             delay(10 * 60_000L)
         }
     }
@@ -132,7 +132,7 @@ class MainActivity : ComponentActivity() {
                 iconOverride.value = null
                 getSharedPreferences("home", MODE_PRIVATE).edit().remove("icon_style").apply()
                 config.value = it
-                lifecycleScope.launch { reloadWallpapers(it); refreshWeather(it) }
+                lifecycleScope.launch { reloadWallpapers(it); refreshWeather(it); refreshFeeds(it) }
             }
             if (intent.getBooleanExtra("reset_dock", true)) setDock(null)
         }

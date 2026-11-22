@@ -63,7 +63,7 @@ import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-private enum class Tab(val label: String) { Home("Home"), Sports("Sports"), Guide("Guide"), Movies("Movies"), Series("Series"), Search("Search"), Settings("Settings") }
+private enum class Tab(val label: String) { Home("Home"), Sports("Sports"), Guide("Guide"), Favorites("Favorites"), Movies("Movies"), Series("Series"), Search("Search"), Settings("Settings") }
 
 private val timeFmt: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm a")
 private fun fmtTime(ms: Long) = Instant.ofEpochMilli(ms).atZone(ZoneId.systemDefault()).format(timeFmt)
@@ -112,6 +112,7 @@ fun LiveApp(a: MainActivity) {
                     Tab.Home -> HomeTab(a, c, accent)
                     Tab.Sports -> SportsTab(a, c, accent)
                     Tab.Guide -> GuideTab(a, c, accent)
+                    Tab.Favorites -> GuideTab(a, c, accent, favoritesOnly = true)
                     Tab.Movies -> c?.xc?.let { VodTab(a, it, false, accent) }
                     Tab.Series -> c?.xc?.let { VodTab(a, it, true, accent) }
                     Tab.Search -> SearchTab(a, accent)
@@ -236,7 +237,7 @@ private fun HomeTab(a: MainActivity, c: LiveConfig?, accent: Color) {
     var firstTaken = false
     fun focusFor(): FocusRequester? = if (firstTaken) null else { firstTaken = true; first }
 
-    LazyColumn(state = listState, modifier = Modifier.onPreviewKeyEvent { touched = true; false }, contentPadding = PaddingValues(bottom = 56.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
+    LazyColumn(state = listState, modifier = Modifier.onPreviewKeyEvent { touched = true; false }, contentPadding = PaddingValues(top = 14.dp, bottom = 56.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
         if (hero != null) { val f = focusFor(); item("hero") { Hero(hero, favTeams, accent, look.hero == 1, Modifier.focusRequester(f!!)) { a.playGame(hero) } } }
         if (live.isNotEmpty()) item("live") { GameShelf("Live now", live, favTeams, accent, a) { a.playGame(it) } }
         if (a.resume.value.isNotEmpty()) item("resume") { ResumeShelf(a, a.resume.value, accent) }
@@ -464,14 +465,22 @@ private fun SportsTab(a: MainActivity, c: LiveConfig?, accent: Color) {
 // ---------------------------------------------------------------- Guide
 
 @Composable
-private fun GuideTab(a: MainActivity, c: LiveConfig?, accent: Color) {
+private fun GuideTab(a: MainActivity, c: LiveConfig?, accent: Color, favoritesOnly: Boolean = false) {
     val chans = a.channels.value
     val guide = a.epg.value
     val favs = a.favorites.value
     val sportsKeys = c?.sportsGroupKeywords ?: emptyList()
     val profile = a.profile.value
     val showAdult = a.look.value.adult && !profile.kids
-    val groupNames = remember(chans, favs, profile, showAdult) {
+    if (favoritesOnly && favs.isEmpty()) {
+        Column(Modifier.fillMaxSize().padding(48.dp)) {
+            Text("No favorites yet", color = Palette.text, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+            Text("Hold OK on any channel in Home, Guide or Search to add it here.", color = Palette.sub, fontSize = 15.sp, modifier = Modifier.padding(top = 8.dp))
+        }
+        return
+    }
+    val groupNames = remember(chans, favs, profile, showAdult, favoritesOnly) {
+        if (favoritesOnly) return@remember listOf("★ Favorites")
         val all = chans.map { it.group }.distinct().filter { showAdult || !isAdultGroup(it) }
         val preferred = profile.groups.filter { it in all }
         val sports = all.filter { g -> g !in preferred && sportsKeys.any { g.contains(it, true) } }

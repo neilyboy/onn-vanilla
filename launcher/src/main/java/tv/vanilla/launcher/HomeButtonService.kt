@@ -15,12 +15,14 @@ class HomeButtonService : AccessibilityService() {
         if (e.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = e.packageName?.toString() ?: return
         val cls = e.className?.toString().orEmpty()
-        if (released(this) || visitingStock) return
+        if (released(this)) return
+        if (visitingStock && System.currentTimeMillis() - visitStart < 3_000) return
         if (pkg in STOCK_HOMES && (cls.endsWith("HomeActivity") || cls.endsWith("MainActivity") || cls.endsWith("LauncherActivity"))) goHome()
     }
 
     override fun onKeyEvent(e: KeyEvent): Boolean {
         if (e.keyCode != KeyEvent.KEYCODE_HOME || released(this)) return false
+        visitingStock = false
         if (e.action == KeyEvent.ACTION_UP) goHome()
         return true
     }
@@ -41,8 +43,9 @@ class HomeButtonService : AccessibilityService() {
     companion object {
         @Volatile var connected = false
 
-        /** Set while the user deliberately opened the stock home; cleared when Vanilla Home comes back. */
+        /** The user opened the stock home on purpose: let it settle for 3 s, then the next Home press comes back here. */
         @Volatile var visitingStock = false
+        @Volatile var visitStart = 0L
 
         /**
          * Force-stopping the launcher unbinds this service and Android won't rebind it on its own,
@@ -77,6 +80,7 @@ class HomeButtonService : AccessibilityService() {
         fun openStockHome(ctx: android.content.Context): Boolean {
             val c = stockHome(ctx) ?: return false
             visitingStock = true
+            visitStart = System.currentTimeMillis()
             return runCatching {
                 ctx.startActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setComponent(c).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }.isSuccess

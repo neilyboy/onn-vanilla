@@ -31,6 +31,10 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
+import android.graphics.drawable.AdaptiveIconDrawable
+import android.os.Build
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.*
@@ -145,7 +149,7 @@ fun LauncherScreen(
         editing?.let { app ->
             val idx = apps.indexOfFirst { it.id == app.id }
             TileMenuDialog(
-                app, theme,
+                app, theme, ICON_STYLES[activity.iconStyle] ?: "Original",
                 canLeft = idx > 0, canRight = idx in 0 until apps.size - 1,
                 onDismiss = { editing = null },
                 onAction = { action ->
@@ -156,6 +160,7 @@ fun LauncherScreen(
                         "right" -> if (idx < list.size - 1) list.add(idx + 1, list.removeAt(idx))
                         "remove" -> list.removeAt(idx)
                         "reset" -> { activity.setDock(null); return@TileMenuDialog }
+                        "icons" -> { activity.cycleIconStyle(); return@TileMenuDialog }
                     }
                     activity.setDock(list)
                 },
@@ -324,7 +329,7 @@ private fun AppTile(app: AppEntry, theme: VanillaTheme, activity: MainActivity, 
                 else app.packages.firstNotNullOfOrNull { runCatching { activity.packageManager.getApplicationIcon(it) }.getOrNull() }
             }
             if (drawable != null) {
-                Image(drawable.toBitmap(256, 256).asImageBitmap(), app.label, Modifier.fillMaxSize().padding(6.dp).clip(RoundedCornerShape(16.dp)))
+                ThemedIcon(drawable, activity.iconStyle, theme.accent, app.label, Modifier.fillMaxSize().padding(6.dp).clip(RoundedCornerShape(16.dp)))
             } else {
                 Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
                     AppIcon(app, activity)
@@ -453,16 +458,21 @@ private fun AppPickerDialog(activity: MainActivity, theme: VanillaTheme, onDone:
     Dialog(onDismissRequest = { onDone(null) }) {
         DialogCard {
             Text("Add to Home", color = Color.White, fontSize = 22.sp, modifier = Modifier.padding(bottom = 6.dp))
+            val store = activity.hasStore
+            if (store) MenuRow(
+                "Get more apps", theme, Modifier.focusRequester(first),
+                leading = { Icon(Icons.Outlined.Shop, null, Modifier.size(36.dp)) },
+            ) { onDone(null); activity.openStore() }
             if (apps.isEmpty()) {
                 Text("Every installed app is already on Home.", color = Color(0xFFB0B4BC), fontSize = 16.sp)
-                MenuRow("Close", theme, Modifier.focusRequester(first)) { onDone(null) }
+                MenuRow("Close", theme, if (store) Modifier else Modifier.focusRequester(first)) { onDone(null) }
             }
             androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = 480.dp)) {
                 items(apps.size) { i ->
                     val app = apps[i]
                     MenuRow(
                         app.label, theme,
-                        modifier = if (i == 0) Modifier.focusRequester(first) else Modifier,
+                        modifier = if (i == 0 && !store) Modifier.focusRequester(first) else Modifier,
                         leading = { Box(Modifier.size(36.dp)) { AppIcon(app, activity) } },
                     ) { onDone(app) }
                 }
@@ -472,7 +482,7 @@ private fun AppPickerDialog(activity: MainActivity, theme: VanillaTheme, onDone:
 }
 
 @Composable
-private fun TileMenuDialog(app: AppEntry, theme: VanillaTheme, canLeft: Boolean, canRight: Boolean, onDismiss: () -> Unit, onAction: (String) -> Unit) {
+private fun TileMenuDialog(app: AppEntry, theme: VanillaTheme, iconStyle: String, canLeft: Boolean, canRight: Boolean, onDismiss: () -> Unit, onAction: (String) -> Unit) {
     val first = remember { FocusRequester() }
     LaunchedEffect(Unit) { delay(50); runCatching { first.requestFocus() } }
     Dialog(onDismissRequest = onDismiss) {
@@ -482,6 +492,7 @@ private fun TileMenuDialog(app: AppEntry, theme: VanillaTheme, canLeft: Boolean,
                 if (canLeft) add("left" to "Move left")
                 if (canRight) add("right" to "Move right")
                 add("remove" to "Remove from Home")
+                add("icons" to "Icon style: $iconStyle")
                 add("reset" to "Reset Home to default")
                 add("cancel" to "Cancel")
             }
@@ -492,4 +503,35 @@ private fun TileMenuDialog(app: AppEntry, theme: VanillaTheme, canLeft: Boolean,
             }
         }
     }
+}
+
+val ICON_STYLES = linkedMapOf("original" to "Original", "mono" to "Monochrome", "accent" to "Accent tint")
+
+/** App icon in the chosen style. Uses the app's own monochrome (themed) icon when it ships one, otherwise recolors the full icon. */
+@Composable
+private fun ThemedIcon(d: Drawable, style: String, accent: Color, label: String, modifier: Modifier) {
+    val mono = remember(d, style) {
+        if (style != "original" && Build.VERSION.SDK_INT >= 33) (d as? AdaptiveIconDrawable)?.monochrome else null
+    }
+    if (mono != null) {
+        Image(mono.toBitmap(192, 192).asImageBitmap(), label, modifier, colorFilter = ColorFilter.tint(if (style == "accent") accent else Color.White))
+        return
+    }
+    val filter = when (style) {
+        "mono" -> ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) })
+        "accent" -> ColorFilter.colorMatrix(accentMatrix(accent))
+        else -> null
+    }
+    Image(d.toBitmap(256, 256).asImageBitmap(), label, modifier, colorFilter = filter)
+}
+
+/** Grayscale, then mapped from a dark shade of [c] (black) to a light tint of it (white). */
+private fun accentMatrix(c: Color): ColorMatrix {
+    fun row(ch: Float): FloatArray {
+        val lo = ch * 0.18f
+        val hi = ch + (1 - ch) * 0.55f
+        val k = hi - lo
+        return floatArrayOf(0.299f * k, 0.587f * k, 0.114f * k, 0f, lo * 255f)
+    }
+    return ColorMatrix(row(c.red) + row(c.green) + row(c.blue) + floatArrayOf(0f, 0f, 0f, 1f, 0f))
 }

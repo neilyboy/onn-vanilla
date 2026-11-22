@@ -34,6 +34,7 @@ data class LauncherConfig(
     val locationName: String,
     val wallpaperManifestUrl: String,
     val apps: List<AppEntry>,
+    val iconStyle: String = "original",
 ) {
     val hasWeather get() = showWeather && !latitude.isNaN() && !longitude.isNaN()
 
@@ -52,6 +53,7 @@ data class LauncherConfig(
                 clock24h = theme.optBoolean("clock_24h", false),
                 wallpaperIntervalSec = ui.optInt("wallpaper_interval_sec", 45).coerceAtLeast(10),
                 idleTimeoutSec = ui.optInt("idle_timeout_sec", 300),
+                iconStyle = ui.optString("icon_style", "original"),
                 scale = ui.optDouble("scale", 1.0).toFloat().coerceIn(0.6f, 1.6f),
                 kenBurns = ui.optBoolean("ken_burns", true),
                 showWeather = ui.optBoolean("show_weather", true),

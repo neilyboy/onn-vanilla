@@ -29,8 +29,33 @@ class MainActivity : ComponentActivity() {
     val dock = mutableStateOf<List<AppEntry>?>(null)
     val lastInput = mutableLongStateOf(System.currentTimeMillis())
     val idle = mutableStateOf(false)
+    private val iconOverride = mutableStateOf<String?>(null)
+
+    /** Icon style picked on the box (tile menu) wins over the setup app's default. */
+    val iconStyle get() = iconOverride.value ?: config.value?.iconStyle ?: "original"
+
+    fun cycleIconStyle() {
+        val next = ICON_STYLES.keys.toList().let { it[(it.indexOf(iconStyle) + 1) % it.size] }
+        iconOverride.value = next
+        getSharedPreferences("home", MODE_PRIVATE).edit().putString("icon_style", next).apply()
+    }
+
+    private fun storeIntent(): Intent? = launchIntentFor("com.android.vending")
+        ?: Intent(Intent.ACTION_VIEW, android.net.Uri.parse("market://search?q=")).takeIf { it.resolveActivity(packageManager) != null }
+
+    val hasStore get() = storeIntent() != null
+
+    fun openStore() {
+        val i = storeIntent() ?: return
+        runCatching { startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+    }
 
     // Handled here rather than in Compose: while idle no tile is focused, so Compose never sees the key.
+    override fun onStart() {
+        super.onStart()
+        iconOverride.value = getSharedPreferences("home", MODE_PRIVATE).getString("icon_style", null)
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN) {
             val wasIdle = idle.value

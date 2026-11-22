@@ -25,6 +25,7 @@ type Setup struct {
 	Greeting        string         `json:"greeting"`
 	IdleMinutes     int            `json:"idleMinutes"`
 	Scale           float64        `json:"scale"`
+	IconStyle       string         `json:"iconStyle,omitempty"`
 	Profiles        []Profile      `json:"profiles"`
 	AskProfile      bool           `json:"askProfile"`
 	Leagues         []string       `json:"leagues"`
@@ -146,7 +147,7 @@ func (s Setup) boxConfig() (map[string]any, error) {
 		"ui": map[string]any{
 			"wallpaper_interval_sec": 45, "idle_timeout_sec": idle, "ken_burns": true,
 			"show_weather": s.Latitude != nil, "show_forecast": s.ShowForecast, "show_settings": true,
-			"greeting": s.Greeting, "scale": scale,
+			"greeting": s.Greeting, "scale": scale, "icon_style": s.IconStyle,
 		},
 		"weather": map[string]any{
 			"latitude": s.Latitude, "longitude": s.Longitude, "unit": unit, "location_name": s.Location,

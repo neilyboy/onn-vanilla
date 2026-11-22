@@ -25,7 +25,7 @@ fun fetchHa(cfg: LauncherConfig): List<HaEntity> {
     if (cfg.haUrl.isBlank() || cfg.haToken.isBlank() || cfg.haEntities.isEmpty()) return emptyList()
     val all = runCatching { JSONArray(haCall(cfg.haUrl, cfg.haToken, "/api/states")) }.getOrNull() ?: return emptyList()
     val byId = (0 until all.length()).mapNotNull { all.optJSONObject(it) }.associateBy { it.optString("entity_id") }
-    return cfg.haEntities.mapNotNull { id ->
+    return cfg.haEntities.flatMap { it.split(',', ' ') }.map { it.trim() }.filter { it.isNotEmpty() }.mapNotNull { id ->
         byId[id]?.let { o ->
             val a = o.optJSONObject("attributes") ?: JSONObject()
             HaEntity(id, a.optString("friendly_name", id), o.optString("state"), a.optString("unit_of_measurement", ""))
@@ -56,7 +56,8 @@ fun fetchPhotos(sources: List<String>): List<String> = sources.flatMap { src ->
     runCatching {
         when {
             "/share/" in src && !src.contains("google") -> {
-                val base = src.substringBefore("/share/"); val key = src.substringAfter("/share/").substringBefore('?').trimEnd('/')
+                val url = finalUrl(src)
+                val base = url.substringBefore("/share/"); val key = url.substringAfter("/share/").substringBefore('?').trimEnd('/')
                 val assets = JSONObject(httpGet("$base/api/shared-links/me?key=$key", 15000)).optJSONArray("assets") ?: JSONArray()
                 (0 until assets.length()).mapNotNull { assets.optJSONObject(it) }.filter { it.optString("type") == "IMAGE" }
                     .map { "$base/api/assets/${it.optString("id")}/thumbnail?size=preview&key=$key" }

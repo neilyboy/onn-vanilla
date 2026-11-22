@@ -169,7 +169,7 @@ func (s Setup) boxConfig() (map[string]any, error) {
 			"greeting": s.Greeting, "scale": scale, "icon_style": s.IconStyle,
 		},
 		"widgets": widgets(s),
-		"ha":      map[string]any{"url": strings.TrimSpace(s.HaURL), "token": strings.TrimSpace(s.HaToken), "entities": lines(s.HaEntities)},
+		"ha":      map[string]any{"url": strings.TrimSpace(s.HaURL), "token": strings.TrimSpace(s.HaToken), "entities": entityIDs(s.HaEntities)},
 		"photos":  map[string]any{"sources": lines(s.Photos)},
 		"feeds": map[string]any{
 			"calendars": lines(s.Calendars), "news": newsFeeds(s), "alerts": !s.NoAlerts,
@@ -243,6 +243,11 @@ func newsFeeds(s Setup) []string {
 }
 
 // lines splits a textarea value into its non-empty trimmed lines.
+// entityIDs accepts Home Assistant entity IDs separated by commas, spaces or new lines.
+func entityIDs(v string) []string {
+	return strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' || r == '\n' || r == '\t' || r == '\r' })
+}
+
 func lines(v string) []string {
 	out := []string{}
 	for _, l := range strings.Split(v, "\n") {

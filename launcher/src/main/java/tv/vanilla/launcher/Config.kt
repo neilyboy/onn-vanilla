@@ -166,16 +166,42 @@ fun appsFromJson(arr: JSONArray): List<AppEntry> = (0 until arr.length()).mapNot
 }
 
 fun httpGet(url: String, timeoutMs: Int = 8000): String {
-    val conn = URL(url).openConnection() as HttpURLConnection
-    conn.connectTimeout = timeoutMs
-    conn.readTimeout = timeoutMs
-    conn.setRequestProperty("User-Agent", "VanillaHome/1.0")
-    try {
-        if (conn.responseCode !in 200..299) error("HTTP ${conn.responseCode}")
-        return conn.inputStream.bufferedReader().use { it.readText() }
-    } finally {
-        conn.disconnect()
+    var u = url
+    repeat(5) {
+        val conn = URL(u).openConnection() as HttpURLConnection
+        conn.connectTimeout = timeoutMs
+        conn.readTimeout = timeoutMs
+        conn.instanceFollowRedirects = false
+        conn.setRequestProperty("User-Agent", "VanillaHome/1.0")
+        try {
+            val code = conn.responseCode
+            // HttpURLConnection won't follow http -> https on its own, which most reverse proxies do.
+            if (code in 300..399) { u = URL(URL(u), conn.getHeaderField("Location") ?: error("HTTP $code")).toString(); return@repeat }
+            if (code !in 200..299) error("HTTP $code")
+            return conn.inputStream.bufferedReader().use { it.readText() }
+        } finally {
+            conn.disconnect()
+        }
     }
+    error("Too many redirects")
+}
+
+/** Where [url] ends up after redirects, e.g. http:// share links behind an https proxy. */
+fun finalUrl(url: String, timeoutMs: Int = 8000): String {
+    var u = url
+    repeat(5) {
+        val conn = URL(u).openConnection() as HttpURLConnection
+        conn.connectTimeout = timeoutMs
+        conn.readTimeout = timeoutMs
+        conn.instanceFollowRedirects = false
+        try {
+            if (conn.responseCode !in 300..399) return u
+            u = URL(URL(u), conn.getHeaderField("Location") ?: return u).toString()
+        } finally {
+            conn.disconnect()
+        }
+    }
+    return u
 }
 
 /** A home screen widget and where it sits: left, center or right. */

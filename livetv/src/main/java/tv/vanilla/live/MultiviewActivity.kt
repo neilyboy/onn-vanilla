@@ -58,6 +58,7 @@ class MultiviewActivity : ComponentActivity() {
         indices.forEachIndexed { i, ch ->
             states += "Loading…"
             val p = ExoPlayer.Builder(this, DefaultRenderersFactory(this).setEnableDecoderFallback(true))
+                .setMediaSourceFactory(androidx.media3.exoplayer.source.DefaultMediaSourceFactory(slowStartHttp()))
                 .setLoadControl(DefaultLoadControl.Builder().setBufferDurationsMs(3_000, 15_000, 1_500, 3_000).build())
                 .build()
             p.addListener(object : Player.Listener {

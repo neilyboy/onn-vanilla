@@ -544,3 +544,10 @@ val DEFAULT_ALIASES = mapOf(
     "NFL Net" to listOf("NFL Network"),
     "TruTV" to listOf("truTV", "Tru TV"),
 )
+
+/** Camera and transcoded feeds can take 15+ s to send their first bytes through Dispatcharr. */
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+fun slowStartHttp() = androidx.media3.datasource.DefaultHttpDataSource.Factory()
+    .setConnectTimeoutMs(15_000)
+    .setReadTimeoutMs(30_000)
+    .setAllowCrossProtocolRedirects(true)

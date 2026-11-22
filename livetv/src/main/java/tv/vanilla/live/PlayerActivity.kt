@@ -102,13 +102,14 @@ class PlayerActivity : ComponentActivity() {
         if (Repo.channels.isEmpty()) { finish(); return }
 
         player = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(androidx.media3.exoplayer.source.DefaultMediaSourceFactory(slowStartHttp()))
             .setLoadControl(DefaultLoadControl.Builder().setBufferDurationsMs(4_000, 30_000, 1_500, 3_000).build())
             .build()
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 buffering.value = state == Player.STATE_BUFFERING
                 window.decorView.removeCallbacks(stallCheck)
-                if (state == Player.STATE_BUFFERING) window.decorView.postDelayed(stallCheck, 15_000)
+                if (state == Player.STATE_BUFFERING) window.decorView.postDelayed(stallCheck, if (playedOnce.value) 15_000 else 30_000)
                 if (state == Player.STATE_READY) { retries = 0; error.value = null; playedOnce.value = true }
             }
             override fun onPlayerError(e: PlaybackException) {

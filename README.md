@@ -1,11 +1,96 @@
+<div align="center">
+
 # Onn Vanilla
 
-Turn an Onn (or any Android TV / Google TV) box into a plain, fast TV appliance:
+**Turn any Android TV / Google TV box into a clean, fast, fully yours TV appliance.**
 
-- **Vanilla Home**: a minimal launcher with a clock, weather, a 7-day forecast, six plain themes and only the apps you choose. Add, move or remove apps from the TV itself (long-press a tile).
-- **Live TV**: a free, open-source IPTV player built for game day. It shows live and upcoming games for your leagues, gives your teams the big card, and jumps straight to the channel carrying the game. It also has a full TV guide. Built on AndroidX Media3 (ExoPlayer).
-- **Setup app**: a small program for Windows, macOS or Linux. It opens a wizard in your browser, then connects to the box over Wi-Fi and installs everything for you.
-- **Dispatcharr** backend: merges all your IPTV providers into **one** playlist and guide, respects each provider's stream limit, and shares one upstream stream when several boxes watch the same channel.
+A minimal launcher with widgets, a game-day IPTV player with Movies & Series, and a one-click setup wizard. No bloat, no ads, nothing personal baked in.
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-black.svg)](LICENSE)
+![Android TV](https://img.shields.io/badge/Android%20TV-8.0%2B-3DDC84?logo=android&logoColor=white)
+![Kotlin](https://img.shields.io/badge/Kotlin-Compose%20for%20TV-7F52FF?logo=kotlin&logoColor=white)
+![Go](https://img.shields.io/badge/setup-Go-00ADD8?logo=go&logoColor=white)
+![Dispatcharr](https://img.shields.io/badge/backend-Dispatcharr-E5484D)
+
+<img src="docs/screenshots/launcher-mirror.jpg" alt="Vanilla Home with the Mirror widget layout" width="900">
+
+[Features](#features) · [Screenshots](#screenshots) · [Quick start](#quick-start) · [Building](#building)
+
+</div>
+
+## Features
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+### Vanilla Home
+- Plain launcher: clock, weather, 7-day forecast, only the apps you pick
+- **Widgets** in Minimal, Glance or Mirror layouts: calendar (iCal) with countdowns, news cards (any RSS), scores, hourly weather + live radar, weather alerts (NWS)
+- **From Live TV:** On now, Continue watching, New on Movies & Series. OK tunes straight in
+- **Home Assistant** switches, lights, locks and camera snapshots
+- **Idle photo frame** from Immich or Google Photos shared albums
+- Themes, accent colors, monochrome / tinted icon styles, Play Store button
+- One button back to the original Google TV home
+
+</td>
+<td width="50%" valign="top">
+
+### Live TV
+- Full TV guide, favorites, recents, search, number entry, last channel
+- **Game day:** your teams' live games up top, one press to the right channel, score bar over whatever you're watching, kickoff reminders
+- **Multiview:** 2–4 games at once, you pick the channels
+- **Movies & Series** from your providers, resume per profile
+- **Profiles** with colors, PINs and a Kids mode
+- **Dispatcharr** by default, plus Xtream Codes and M3U sources added right on the TV
+- Empty event slots stay hidden until a game is on
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+### Setup wizard
+- Runs on Windows, macOS or Linux and opens in your browser
+- Walks you through wireless debugging and pairing
+- Detects the device and only removes bloat known to be safe for it (reversible)
+- Pushes your theme, widgets, sports and profiles to every box
+- Export / import your settings
+
+</td>
+<td valign="top">
+
+### Channel lineup (Dispatcharr)
+- Merges every provider into **one** guide, with automatic backups per channel
+- Respects each provider's stream limit
+- Keeps your country (plus any you tick, e.g. UK sports and 4K)
+- **What's left out:** browse every hidden group and add any back
+- Rebuilds itself when you add or drop a provider
+
+</td>
+</tr>
+</table>
+
+## Screenshots
+
+| Live TV home | Sports |
+|---|---|
+| ![Live TV home](docs/screenshots/livetv-home.jpg) | ![Sports](docs/screenshots/livetv-sports.jpg) |
+| **Guide** | **Settings** |
+| ![Guide](docs/screenshots/livetv-guide.jpg) | ![Settings](docs/screenshots/livetv-settings.jpg) |
+| **Movies** | **Series** |
+| ![Movies](docs/screenshots/livetv-movies.jpg) | ![Series](docs/screenshots/livetv-series.jpg) |
+
+<details>
+<summary><b>Setup wizard</b></summary>
+
+| Live TV source | Home screen |
+|---|---|
+| ![Live TV source](docs/screenshots/wizard-source.jpg) | ![Home screen](docs/screenshots/wizard-home.jpg) |
+| **Sports** | **Set up a box** |
+| ![Sports](docs/screenshots/wizard-sports.jpg) | ![Set up a box](docs/screenshots/wizard-box.jpg) |
+
+</details>
 
 Nothing personal ships in this repo. The setup app keeps your settings on your computer only.
 
@@ -55,7 +140,7 @@ The setup app downloads Google's `adb` itself if you don't have it. To run it on
 
 ### Live TV appearance
 
-Each TV keeps its own look: **Live TV → Settings** has screen size (80–140%, for 1080p vs 4K), text size, guide row height, 2/3/4-hour guide, channel logos, accent color and background.
+Each TV keeps its own look: **Live TV → Settings** has screen size, text size, guide row height, 2/3/4-hour guide, channel logos, accent color, background, adult channels, empty event slots and the score bar.
 
 ## What gets removed
 

@@ -304,15 +304,15 @@ async function init() {
     $("#dc-cats").innerHTML = names.map(n => `<label><input type="checkbox" value="${esc(n)}" ${!S.lineupCats || !S.lineupCats.length || S.lineupCats.includes(n) ? "checked" : ""}> ${esc(n)}</label>`).join("");
   });
   $$("#dc-extra input").forEach(i => i.checked = (S.lineupExtra || []).includes(i.value));
-  $("#dc-keep-empty").checked = !!S.lineupKeepEmpty;
+  $("#dc-hide-empty").checked = !!S.lineupHideEmpty;
   const lineupBody = () => {
     S.lineupCats = $$("#dc-cats input:checked").map(i => i.value);
     S.lineupExtra = $$("#dc-extra input:checked").map(i => i.value);
-    S.lineupKeepEmpty = $("#dc-keep-empty").checked;
+    S.lineupHideEmpty = $("#dc-hide-empty").checked;
     S.lineupAdd = S.lineupAdd || [];
     save();
     return { user: $("#dc-user").value, pass: $("#dc-pass").value, prefix: $("#dc-prefix").value, locals: $("#dc-locals").value.trim(),
-      cats: S.lineupCats, extra: S.lineupExtra, add: S.lineupAdd, keepEmpty: S.lineupKeepEmpty };
+      cats: S.lineupCats, extra: S.lineupExtra, add: S.lineupAdd, hideEmpty: S.lineupHideEmpty };
   };
   const filterHidden = () => {
     const q = $("#dc-hidden-filter").value.trim().toLowerCase();

@@ -596,7 +596,7 @@ type LineupOpts struct {
 	Cats           []string
 	Extra          []string // more countries as their own groups, e.g. "UK|GB"
 	Add            []string // provider groups from "What's left out" to add as they are
-	KeepEmpty      bool     // keep "NO EVENT" slots
+	HideEmpty      bool     // drop event slots named "NO EVENT" when the list is built
 }
 
 var countryLabels = map[string]string{"US|USA": "US", "UK|GB": "UK", "CA|CANADA": "Canada", "AU|AUSTRALIA": "Australia", "IE|IRELAND": "Ireland"}
@@ -628,7 +628,7 @@ func presetLineup(o LineupOpts) Lineup {
 		want[strings.ToLower(c)] = true
 	}
 	l := preset()
-	l.DropEmptyEvents = !o.KeepEmpty
+	l.DropEmptyEvents = o.HideEmpty
 	countries := []string{prefix}
 	var front, back, groups []LineupGroup
 	for i, a := range o.Add {

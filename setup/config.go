@@ -15,7 +15,7 @@ type Setup struct {
 	LineupCats      []string       `json:"lineupCats,omitempty"`
 	LineupExtra     []string       `json:"lineupExtra,omitempty"`
 	LineupAdd       []string       `json:"lineupAdd,omitempty"`
-	LineupKeepEmpty bool           `json:"lineupKeepEmpty,omitempty"`
+	LineupHideEmpty bool           `json:"lineupHideEmpty,omitempty"`
 	Server          string         `json:"server"`
 	M3U             string         `json:"m3u"`
 	EPG             string         `json:"epg"`

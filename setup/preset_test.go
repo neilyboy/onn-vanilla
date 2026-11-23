@@ -23,7 +23,7 @@ func TestPresetLineup(t *testing.T) {
 
 func TestExtrasAndCountries(t *testing.T) {
 	l := presetLineup(LineupOpts{Extra: []string{"UK|GB"}, Add: []string{"DE | Sky Sports+"}, Cats: []string{"Sports"}})
-	if l.Countries != "US|USA|UK|GB" || !l.DropEmptyEvents {
+	if l.Countries != "US|USA|UK|GB" || l.DropEmptyEvents {
 		t.Fatalf("countries %q drop %v", l.Countries, l.DropEmptyEvents)
 	}
 	names := []string{}

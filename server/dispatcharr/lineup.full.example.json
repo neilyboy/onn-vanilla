@@ -1,6 +1,6 @@
 {
   "countries": "US|USA",
-  "drop_empty_events": true,
+  "drop_empty_events": false,
   "skip_groups": "low ?bw|\\btest\\b|^temp",
   "groups": [
     {"name": "Locals", "start": 2, "sources": [ "^(US|USA)\\s*\\|\\s*(Local\\b|.*Locals)" ], "include": "YOUR_CITY|YOUR_CALL_LETTERS"},

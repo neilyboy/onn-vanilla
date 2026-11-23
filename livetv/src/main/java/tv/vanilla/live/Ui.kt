@@ -205,7 +205,7 @@ private fun HomeTab(a: MainActivity, c: LiveConfig?, accent: Color) {
     val profile = a.profile.value
     val look = a.look.value
     val games = remember(a.games.value, c) { sortGames(a.games.value, favTeams) }
-    val chans = a.channels.value
+    val chans = a.shownChannels.value
     val guide = a.epg.value
     val favs = a.favorites.value
     val sportsOn = profile.sports
@@ -499,7 +499,7 @@ private fun SportsTab(a: MainActivity, c: LiveConfig?, accent: Color) {
 
 @Composable
 private fun GuideTab(a: MainActivity, c: LiveConfig?, accent: Color, favoritesOnly: Boolean = false) {
-    val chans = a.channels.value
+    val chans = a.shownChannels.value
     val guide = a.epg.value
     val favs = a.favorites.value
     val sportsKeys = c?.sportsGroupKeywords ?: emptyList()
@@ -716,7 +716,7 @@ fun KickoffCard(g: Game, channel: String, accent: Color, modifier: Modifier) {
 @Composable
 private fun SearchTab(a: MainActivity, accent: Color) {
     var q by remember { mutableStateOf("") }
-    val chans = a.channels.value
+    val chans = a.shownChannels.value
     val guide = a.epg.value
     val showAdult = a.look.value.adult && !a.profile.value.kids
     DisposableEffect(Unit) { a.searching = true; onDispose { a.searching = false } }
@@ -825,6 +825,7 @@ private fun LookTab(a: MainActivity, accent: Color) {
                 if (!kids) a.setLook(l.copy(adult = !l.adult))
             }
         }
+        item { LookRow("Empty event slots", if (l.emptySlots) "Shown" else "Hidden until a game is on", accent) { a.setLook(l.copy(emptySlots = !l.emptySlots)) } }
         item { LookRow("Score bar while watching", listOf("Off", "Favorite teams", "All live games")[a.ticker.intValue.coerceIn(0, 2)], accent) { a.cycleTicker() } }
         item { LookRow("Open on last channel", if (a.resumeLast.value) "On" else "Off", accent) { a.toggleResumeLast() } }
         item { LookRow("Reset appearance", "", accent) { a.setLook(Look()) } }
@@ -1053,7 +1054,7 @@ private fun MultiviewCard(n: Int, accent: Color, onClick: () -> Unit) {
 
 @Composable
 private fun MultiviewPicker(a: MainActivity, accent: Color) {
-    val chans = a.channels.value
+    val chans = a.shownChannels.value
     val guide = a.epg.value
     val showAdult = a.look.value.adult && !a.profile.value.kids
     val gameOpts by produceState<List<Pair<Channel, String>>?>(null, a.games.value, chans) { value = a.liveGameChannels() }

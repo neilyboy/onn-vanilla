@@ -49,6 +49,8 @@ class MainActivity : ComponentActivity() {
     lateinit var settings: Settings
     val config = mutableStateOf<LiveConfig?>(null)
     val channels = mutableStateOf<List<Channel>>(emptyList())
+    /** [channels] minus event slots with nothing on, unless Settings shows them. */
+    val shownChannels = derivedStateOf { channels.value.let { l -> if (look.value.emptySlots) l else l.filterNot { isEmptySlot(it.name) } } }
     val epg = mutableStateOf<Map<String, List<Programme>>>(emptyMap())
     val games = mutableStateOf<List<Game>>(emptyList())
     val favorites = mutableStateOf<Set<String>>(emptySet())
@@ -165,7 +167,7 @@ class MainActivity : ComponentActivity() {
     /** Refreshes the snapshot the home screen widgets read. */
     fun writeGlance() {
         val p = profile.value.name
-        val ch = channels.value; val g = epg.value; val f = favorites.value; val r = recents.value; val gm = games.value
+        val ch = shownChannels.value; val g = epg.value; val f = favorites.value; val r = recents.value; val gm = games.value
         if (ch.isEmpty()) return
         lifecycleScope.launch(Dispatchers.IO) { Glance.write(this@MainActivity, p, ch, g, f, r, gm, Repo.favTeams) }
     }

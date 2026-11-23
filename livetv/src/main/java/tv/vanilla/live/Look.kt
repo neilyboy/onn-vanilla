@@ -14,6 +14,7 @@ data class Look(
     val guideLogos: Boolean = true,
     val hero: Int = 1,
     val adult: Boolean = true,
+    val emptySlots: Boolean = false,
 ) {
     val rowHeightDp get() = listOf(50, 62, 80)[rows.coerceIn(0, 2)]
 
@@ -21,7 +22,7 @@ data class Look(
         context.getSharedPreferences("look", Context.MODE_PRIVATE).edit()
             .putFloat("scale", scale).putFloat("text", text).putInt("rows", rows).putInt("hours", guideHours)
             .putString("accent", accent).putString("background", background).putBoolean("logos", guideLogos)
-            .putInt("hero", hero).putBoolean("adult", adult).apply()
+            .putInt("hero", hero).putBoolean("adult", adult).putBoolean("empty", emptySlots).apply()
     }
 
     companion object {
@@ -47,7 +48,7 @@ data class Look(
             return Look(
                 p.getFloat("scale", 1f), p.getFloat("text", 1f), p.getInt("rows", 1), p.getInt("hours", 3),
                 p.getString("accent", "") ?: "", p.getString("background", "midnight") ?: "midnight", p.getBoolean("logos", true),
-                p.getInt("hero", 1), p.getBoolean("adult", true),
+                p.getInt("hero", 1), p.getBoolean("adult", true), p.getBoolean("empty", false),
             )
         }
 
@@ -55,6 +56,7 @@ data class Look(
             o.optDouble("scale", 1.0).toFloat(), o.optDouble("text", 1.0).toFloat(), o.optInt("rows", 1),
             o.optInt("guide_hours", 3), o.optString("accent", ""), o.optString("background", "midnight"),
             o.optBoolean("guide_logos", true), o.optInt("hero", 1), o.optBoolean("adult_channels", true),
+            o.optBoolean("empty_event_slots", false),
         )
     }
 }

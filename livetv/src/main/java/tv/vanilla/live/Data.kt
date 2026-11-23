@@ -64,6 +64,10 @@ val DEFAULT_PROFILES = listOf(
 private val ADULT = Regex("""adult|xxx|18\+|porn""", RegexOption.IGNORE_CASE)
 fun isAdultGroup(g: String) = ADULT.containsMatchIn(g)
 
+// Event slots with nothing on right now ("NBA 12: NO EVENT", "NCAAF 82:"); providers rename them when a game starts.
+private val EMPTY_SLOT = Regex("""no events?\b|no games?\b|off ?air|^[^:]*:\s*$|\(209\d""", RegexOption.IGNORE_CASE)
+fun isEmptySlot(name: String) = EMPTY_SLOT.containsMatchIn(name)
+
 /** Channels whose programme airing now mentions [keyword], one per guide id. */
 fun onNowMatching(chans: List<Channel>, epg: Map<String, List<Programme>>, keyword: String, limit: Int = 40): List<Channel> {
     val now = System.currentTimeMillis()

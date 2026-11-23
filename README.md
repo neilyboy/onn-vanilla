@@ -38,6 +38,8 @@ Your choices live in `~/.config/onn-vanilla/lineup.json` (copied from [`lineup.f
 
 **When you add or change a provider:** add it in Dispatcharr, let it load, then run `./refresh-lineup.sh` or wait for the nightly run. New channels are merged in, dead ones are removed, and channel numbers stay put. Use `./refresh-lineup.sh --dry-run` to preview changes.
 
+**Other countries and what's hidden:** only your country's channels are kept (`"countries": "US|USA"` in the lineup file). In the wizard, tick **Also include another country** to get, say, the UK's sports, sports events and TV as their own groups, including their 4K sports feeds. 4K/UHD channels get their own **4K** group, and empty event slots (`NBA 12: NO EVENT`) are dropped. To see everything left out, open **What's left out** in the wizard's lineup step and tick any group to add it, or run `./refresh-lineup.sh --hidden` on the server. Adding or dropping a provider needs nothing else: the same rules apply to the new provider's groups at the next refresh.
+
 **Cameras and other custom streams** (RTSP/RTSPS cameras, HLS links): in Dispatcharr, add a custom stream, put it in a group named **Cameras**, and choose the **ffmpeg** stream profile. The next refresh adds it to the guide.
 
 ### 3. TV boxes

@@ -183,13 +183,143 @@ func (c *dcClient) syncLimits(apply bool) ([]LimitInfo, error) {
 
 // LineupGroup is one group of the merged lineup, e.g. "Sports" built from every provider's US sports groups.
 type LineupGroup struct {
-	Name    string   `json:"name"`
-	Start   int      `json:"start"`
-	Sources []string `json:"sources"`           // regexes on provider group names
-	Include string   `json:"include,omitempty"` // regex on stream names (e.g. your city / call letters)
-	Exclude string   `json:"exclude,omitempty"`
-	Skip    string   `json:"skip_groups,omitempty"` // provider groups to leave out
-	NoMerge bool     `json:"-"`                     // event slots: one channel per stream
+	Name       string   `json:"name"`
+	Start      int      `json:"start"`
+	Merge      *bool    `json:"merge,omitempty"`   // false for event slots: one channel per stream
+	Sources    []string `json:"sources"`           // regexes on provider group names
+	Include    string   `json:"include,omitempty"` // regex on stream names (e.g. your city / call letters)
+	Exclude    string   `json:"exclude,omitempty"`
+	Skip       string   `json:"skip_groups,omitempty"` // provider groups to leave out
+	AnyCountry bool     `json:"any_country,omitempty"` // keep streams even if they're from another country
+}
+
+func (g LineupGroup) noMerge() bool { return g.Merge != nil && !*g.Merge }
+
+// Lineup is the whole channel list; it's also saved as lineup.json for the nightly refresh-lineup.sh.
+type Lineup struct {
+	Countries       string        `json:"countries,omitempty"` // country codes to keep, e.g. "US|USA|UK|GB"
+	DropEmptyEvents bool          `json:"drop_empty_events,omitempty"`
+	SkipGroups      string        `json:"skip_groups,omitempty"`
+	Groups          []LineupGroup `json:"groups"`
+}
+
+var (
+	// "DE: RTL" on streams, "AR | beIN" on groups. Streams only count "XX:" so US state locals
+	// like "IL | Springfield | CBS" aren't mistaken for Israel.
+	reCode       = regexp.MustCompile(`^\s*([A-Z]{2,4})\s*:`)
+	reGroupCode  = regexp.MustCompile(`^\s*([A-Z]{2,4})\s*[:|]`)
+	reEmptyEvent = regexp.MustCompile(`(?i)no events?\b|no games?\b|off ?air|^[^:]*:\s*$|\(209\d`)
+	countryCodes = map[string]bool{}
+)
+
+func init() {
+	for _, c := range strings.Fields(`AD AE AF AL AM AO AR AT AU AZ BA BD BE BG BH BO BR BY CA CH CL CN CO CR CU CY CZ DE DK DO DZ
+EC EE EG ES ET FI FR GB GE GH GR GT HK HN HR HT HU ID IE IL IN IQ IR IS IT JM JO JP KE KR KW KZ LB LK LT LU LV LY MA MK
+MT MX MY NG NI NL NO NP NZ OM PA PE PH PK PL PR PS PT PY QA RO RS RU SA SE SG SI SK SN SV SY TH TN TR TW TZ UA UG UK US
+UY UZ VE VN YE ZA USA GER FRA ESP ITA POR POL NED SWE NOR DEN FIN TUR ARA RUS BRA ARG MEX IND PAK EXYU AFR CAN AUS`) {
+		countryCodes[c] = true
+	}
+}
+
+// foreign reports whether a stream (or provider group) name starts with another country's code.
+func (l Lineup) foreign(name string, group bool) bool {
+	if l.Countries == "" {
+		return false
+	}
+	re := reCode
+	if group {
+		re = reGroupCode
+	}
+	m := re.FindStringSubmatch(name)
+	if m == nil || !countryCodes[m[1]] {
+		return false
+	}
+	for _, c := range strings.Split(l.Countries, "|") {
+		if strings.EqualFold(strings.TrimSpace(c), m[1]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (l Lineup) skipRe() *regexp.Regexp {
+	if re, err := regexp.Compile("(?i)" + l.SkipGroups); err == nil && l.SkipGroups != "" {
+		return re
+	}
+	return regexp.MustCompile(`(?i)low ?bw|\btest\b|^temp`)
+}
+
+// claim returns the provider groups each lineup group takes; earlier lineup groups win.
+func (l Lineup) claim(groups []dcGroup) [][]dcGroup {
+	own := map[string]bool{}
+	for _, spec := range l.Groups {
+		own[spec.Name] = true
+	}
+	claimed := map[int]bool{}
+	globalSkip := l.skipRe()
+	out := make([][]dcGroup, len(l.Groups))
+	for i, spec := range l.Groups {
+		skip, _ := regexp.Compile("(?i)" + spec.Skip)
+		var pats []*regexp.Regexp
+		for _, p := range spec.Sources {
+			if re, err := regexp.Compile("(?i)" + p); err == nil {
+				pats = append(pats, re)
+			}
+		}
+		for _, g := range groups {
+			if claimed[g.ID] || (own[g.Name] && g.Name != spec.Name) || globalSkip.MatchString(g.Name) || (spec.Skip != "" && skip != nil && skip.MatchString(g.Name)) ||
+				(!spec.AnyCountry && l.foreign(g.Name, true)) {
+				continue
+			}
+			for _, p := range pats {
+				if p.MatchString(g.Name) {
+					out[i] = append(out[i], g)
+					claimed[g.ID] = true
+					break
+				}
+			}
+		}
+	}
+	return out
+}
+
+// HiddenGroup is a provider group the lineup leaves out.
+type HiddenGroup struct {
+	Name    string `json:"name"`
+	Streams int    `json:"streams"`
+	Reason  string `json:"reason"`
+}
+
+func (c *dcClient) hidden(l Lineup) ([]HiddenGroup, error) {
+	groups, err := c.groups()
+	if err != nil {
+		return nil, err
+	}
+	taken := map[string]bool{}
+	for _, spec := range l.Groups {
+		taken[spec.Name] = true
+	}
+	for _, src := range l.claim(groups) {
+		for _, g := range src {
+			taken[g.Name] = true
+		}
+	}
+	skip := l.skipRe()
+	out := []HiddenGroup{}
+	for _, g := range groups {
+		if taken[g.Name] || g.streams() == 0 {
+			continue
+		}
+		h := HiddenGroup{Name: g.Name, Streams: g.streams(), Reason: "not in any group"}
+		if skip.MatchString(g.Name) {
+			h.Reason = "test / low quality"
+		} else if l.foreign(g.Name, true) {
+			h.Reason = "other country"
+		}
+		out = append(out, h)
+	}
+	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name) })
+	return out, nil
 }
 
 type plannedChannel struct {
@@ -207,7 +337,7 @@ type plannedGroup struct {
 }
 
 var (
-	reJunk   = regexp.MustCompile(`(?i)\b(hd|fhd|uhd|4k|sd|hevc|h265|backup|alt|alternative)\b|\(.*?\)|\[.*?\]`)
+	reJunk   = regexp.MustCompile(`(?i)\b(hd|fhd|uhd|4k|sd|hevc|h265|lb|hb|backup|alt|alternative)\b|\(.*?\)|\[.*?\]`)
 	rePrefix = regexp.MustCompile(`(?i)^\s*(us|usa|united states|uk|ca|au)\s*[:|\-]?\s+`)
 	reNonAZ  = regexp.MustCompile(`[^a-z0-9]+`)
 )
@@ -269,7 +399,7 @@ func (c *dcClient) streamsIn(groups []dcGroup) ([]dcStream, error) {
 	return out, nil
 }
 
-func (c *dcClient) plan(specs []LineupGroup) ([]plannedGroup, map[int]string, error) {
+func (c *dcClient) plan(l Lineup) ([]plannedGroup, map[int]string, error) {
 	accts, err := c.accounts()
 	if err != nil {
 		return nil, nil, err
@@ -290,34 +420,10 @@ func (c *dcClient) plan(specs []LineupGroup) ([]plannedGroup, map[int]string, er
 		return nil, nil, err
 	}
 	logos := map[int]string{}
-	claimed := map[int]bool{}
-	own := map[string]bool{}
-	for _, spec := range specs {
-		own[spec.Name] = true
-	}
-	globalSkip := regexp.MustCompile(`(?i)low ?bw|\btest\b|^temp`)
+	claims := l.claim(groups)
 	var out []plannedGroup
-	for _, spec := range specs {
-		skip, _ := regexp.Compile("(?i)" + spec.Skip)
-		var pats []*regexp.Regexp
-		for _, p := range spec.Sources {
-			if re, err := regexp.Compile("(?i)" + p); err == nil {
-				pats = append(pats, re)
-			}
-		}
-		var src []dcGroup
-		for _, g := range groups {
-			if claimed[g.ID] || own[g.Name] || globalSkip.MatchString(g.Name) || (spec.Skip != "" && skip != nil && skip.MatchString(g.Name)) {
-				continue
-			}
-			for _, p := range pats {
-				if p.MatchString(g.Name) {
-					src = append(src, g)
-					claimed[g.ID] = true
-					break
-				}
-			}
-		}
+	for gi, spec := range l.Groups {
+		src := claims[gi]
 		streams, err := c.streamsIn(src)
 		if err != nil {
 			return nil, nil, err
@@ -326,7 +432,8 @@ func (c *dcClient) plan(specs []LineupGroup) ([]plannedGroup, map[int]string, er
 		exc, _ := regexp.Compile("(?i)" + spec.Exclude)
 		var kept []dcStream
 		for _, s := range streams {
-			if !active[s.Account] || (spec.Include != "" && inc != nil && !inc.MatchString(s.Name)) || (spec.Exclude != "" && exc != nil && exc.MatchString(s.Name)) {
+			if !active[s.Account] || (spec.Include != "" && inc != nil && !inc.MatchString(s.Name)) || (spec.Exclude != "" && exc != nil && exc.MatchString(s.Name)) ||
+				(!spec.AnyCountry && l.foreign(s.Name, false)) || (l.DropEmptyEvents && spec.noMerge() && reEmptyEvent.MatchString(s.Name)) {
 				continue
 			}
 			kept = append(kept, s)
@@ -345,7 +452,7 @@ func (c *dcClient) plan(specs []LineupGroup) ([]plannedGroup, map[int]string, er
 		}
 		seen := map[string]int{}
 		for i, s := range kept {
-			if spec.NoMerge {
+			if spec.noMerge() {
 				break
 			}
 			keys := []string{"n:" + nameKey(s.Name)}
@@ -477,32 +584,77 @@ func (c *dcClient) apply(plan []plannedGroup, log logger) error {
 //go:embed lineup-preset.json
 var lineupPreset []byte
 
-type presetGroup struct {
-	LineupGroup
-	Merge *bool `json:"merge"`
+func preset() Lineup {
+	var l Lineup
+	_ = json.Unmarshal(lineupPreset, &l)
+	return l
 }
 
-func presetGroups() []LineupGroup {
-	var f struct{ Groups []presetGroup }
-	_ = json.Unmarshal(lineupPreset, &f)
-	out := make([]LineupGroup, 0, len(f.Groups))
-	for _, g := range f.Groups {
-		g.LineupGroup.NoMerge = g.Merge != nil && !*g.Merge
-		out = append(out, g.LineupGroup)
+// LineupOpts are the wizard's channel-list choices.
+type LineupOpts struct {
+	Prefix, Locals string
+	Cats           []string
+	Extra          []string // more countries as their own groups, e.g. "UK|GB"
+	Add            []string // provider groups from "What's left out" to add as they are
+	KeepEmpty      bool     // keep "NO EVENT" slots
+}
+
+var countryLabels = map[string]string{"US|USA": "US", "UK|GB": "UK", "CA|CANADA": "Canada", "AU|AUSTRALIA": "Australia", "IE|IRELAND": "Ireland"}
+
+func addedName(src string) string {
+	parts := strings.Split(src, "|")
+	if len(parts) == 1 {
+		return strings.TrimSpace(src) + " (added)"
 	}
-	return out
+	for i, j := 0, len(parts)-1; i < j; i, j = i+1, j-1 {
+		parts[i], parts[j] = parts[j], parts[i]
+	}
+	for i := range parts {
+		parts[i] = strings.TrimSpace(parts[i])
+	}
+	return strings.Join(parts, " · ")
 }
 
 // presetLineup returns the default lineup (everything except foreign groups) for a country
-// prefix like "US|USA", limited to the chosen group names, with an optional local market.
-func presetLineup(prefix string, cats []string, locals string) []LineupGroup {
+// prefix like "US|USA", limited to the chosen group names, with an optional local market,
+// extra countries and hand-picked provider groups.
+func presetLineup(o LineupOpts) Lineup {
+	prefix, locals := o.Prefix, strings.TrimSpace(o.Locals)
+	if prefix == "" {
+		prefix = "US|USA"
+	}
 	want := map[string]bool{}
-	for _, c := range cats {
+	for _, c := range o.Cats {
 		want[strings.ToLower(c)] = true
 	}
-	locals = strings.TrimSpace(locals)
-	var out []LineupGroup
-	for _, g := range presetGroups() {
+	l := preset()
+	l.DropEmptyEvents = !o.KeepEmpty
+	countries := []string{prefix}
+	var front, back, groups []LineupGroup
+	for i, a := range o.Add {
+		front = append(front, LineupGroup{Name: addedName(a), Start: 80000 + i*1000, Sources: []string{"^" + regexp.QuoteMeta(a) + "$"}, AnyCountry: true})
+	}
+	no := false
+	n := 0
+	for _, x := range o.Extra {
+		if x == prefix || x == "" {
+			continue
+		}
+		label := countryLabels[x]
+		if label == "" {
+			label = strings.SplitN(x, "|", 2)[0]
+		}
+		countries = append(countries, x)
+		base, p := 50000+n*4000, "^("+x+")\\s*\\|"
+		n++
+		front = append(front,
+			LineupGroup{Name: label + " Sports Events", Start: base + 3000, Merge: &no, Sources: []string{p + ".*(event|live only|ppv|max sports|pre season)"}},
+			LineupGroup{Name: label + " Sports", Start: base + 2000, Sources: []string{p + ".*(sport|tnt|dazn|premier|tennis|league|ifollow|f1|racing|golf|cricket|rugby|football|bein|eurosport|tsn|kayo|stan)"}})
+		back = append(back, LineupGroup{Name: label + " TV", Start: base, Sources: []string{p},
+			Skip: "low|bandwidth|plus ?1|shopping|betting|religion|regional|asian|internationals|adult|xxx|replay|sport|tnt|dazn|event|ifollow|league|tennis"})
+	}
+	l.Countries = strings.Join(countries, "|")
+	for _, g := range l.Groups {
 		if len(want) > 0 && !want[strings.ToLower(g.Name)] {
 			continue
 		}
@@ -512,12 +664,15 @@ func presetLineup(prefix string, cats []string, locals string) []LineupGroup {
 			}
 			g.Include = locals
 		}
-		if prefix != "" && prefix != "US|USA" {
-			for i, src := range g.Sources {
-				g.Sources[i] = strings.ReplaceAll(src, "(US|USA)", "("+prefix+")")
+		if prefix != "US|USA" {
+			src := append([]string(nil), g.Sources...)
+			for i := range src {
+				src[i] = strings.ReplaceAll(src[i], "(US|USA)", "("+prefix+")")
 			}
+			g.Sources = src
 		}
-		out = append(out, g)
+		groups = append(groups, g)
 	}
-	return out
+	l.Groups = append(append(front, groups...), back...)
+	return l
 }

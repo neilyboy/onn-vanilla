@@ -10,6 +10,12 @@ import (
 
 // Setup is everything the wizard collects. It is stored only on this computer.
 type Setup struct {
+	LineupPrefix    string         `json:"lineupPrefix,omitempty"`
+	LineupLocals    string         `json:"lineupLocals,omitempty"`
+	LineupCats      []string       `json:"lineupCats,omitempty"`
+	LineupExtra     []string       `json:"lineupExtra,omitempty"`
+	LineupAdd       []string       `json:"lineupAdd,omitempty"`
+	LineupKeepEmpty bool           `json:"lineupKeepEmpty,omitempty"`
 	Server          string         `json:"server"`
 	M3U             string         `json:"m3u"`
 	EPG             string         `json:"epg"`

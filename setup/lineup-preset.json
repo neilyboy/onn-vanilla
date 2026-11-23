@@ -1,4 +1,6 @@
 {
+  "countries": "US|USA",
+  "drop_empty_events": true,
   "skip_groups": "low ?bw|\\btest\\b|^temp",
   "groups": [
     {"name": "Locals", "start": 2, "sources": [ "^(US|USA)\\s*\\|\\s*(Local\\b|.*Locals)" ], "include": "YOUR_CITY|YOUR_CALL_LETTERS"},
@@ -10,6 +12,7 @@
     {"name": "Kids", "start": 1000, "sources": [ "^(US|USA)\\s*\\|\\s*Kids" ]},
     {"name": "Music", "start": 1100, "sources": [ "^(US|USA)\\s*\\|\\s*Music" ]},
     {"name": "Documentary", "start": 1250, "sources": [ "^(US|USA)\\s*\\|\\s*Documentar" ]},
+    {"name": "4K", "start": 11500, "sources": [ "4k|uhd|ultra ?hd" ], "skip_groups": "18\\+|xxx|adult"},
     {"name": "Replays", "start": 60000, "merge": false, "sources": [ "replay" ]},
     {"name": "Adult", "start": 70000, "merge": false, "sources": [ "^18\\+", "xxx|adult" ]},
     {"name": "Free TV", "start": 2000, "sources": [ "pluto|tubi|samsung|plex ?tv|xumo|stirr|peacock live|mw\\+" ]},

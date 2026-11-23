@@ -9,6 +9,8 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -59,9 +61,8 @@ func registerAPI(mux *http.ServeMux) {
 		writeJSON(w, map[string]any{"path": p, "version": v, "apks": apkErr == nil, "dataDir": dataDir})
 	})
 	type lineupReq struct {
-		User, Pass, Prefix, Locals string
-		Cats                       []string
-		Apply                      bool
+		User, Pass string
+		LineupOpts
 	}
 	lineupClient := func(r *http.Request) (*dcClient, lineupReq, error) {
 		var b lineupReq
@@ -90,7 +91,7 @@ func registerAPI(mux *http.ServeMux) {
 	})
 	mux.HandleFunc("GET /api/lineup/groups", func(w http.ResponseWriter, r *http.Request) {
 		var names []string
-		for _, g := range presetGroups() {
+		for _, g := range preset().Groups {
 			names = append(names, g.Name)
 		}
 		writeJSON(w, names)
@@ -102,7 +103,7 @@ func registerAPI(mux *http.ServeMux) {
 			return
 		}
 		limits, _ := c.syncLimits(false)
-		plan, _, err := c.plan(presetLineup(b.Prefix, b.Cats, b.Locals))
+		plan, _, err := c.plan(presetLineup(b.LineupOpts))
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -116,6 +117,20 @@ func registerAPI(mux *http.ServeMux) {
 			}
 		}
 		writeJSON(w, map[string]any{"limits": limits, "groups": plan, "counts": counts, "total": total})
+	})
+	mux.HandleFunc("POST /api/lineup/hidden", func(w http.ResponseWriter, r *http.Request) {
+		c, b, err := lineupClient(r)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		b.Add = nil // list hand-picked groups too, so they can be unticked
+		h, err := c.hidden(presetLineup(b.LineupOpts))
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, h)
 	})
 	mux.HandleFunc("POST /api/lineup/apply", func(w http.ResponseWriter, r *http.Request) {
 		c, b, err := lineupClient(r)
@@ -136,11 +151,18 @@ func registerAPI(mux *http.ServeMux) {
 				}
 			}
 			log("==> Merging channels across providers")
-			plan, _, err := c.plan(presetLineup(b.Prefix, b.Cats, b.Locals))
+			l := presetLineup(b.LineupOpts)
+			plan, _, err := c.plan(l)
 			if err != nil {
 				return err
 			}
-			return c.apply(plan, log)
+			if err := c.apply(plan, log); err != nil {
+				return err
+			}
+			if data, err := json.MarshalIndent(l, "", " "); err == nil && os.WriteFile(filepath.Join(dataDir, "lineup.json"), data, 0o644) == nil {
+				log("Saved these choices to %s for the nightly refresh-lineup.sh.", filepath.Join(dataDir, "lineup.json"))
+			}
+			return nil
 		})
 	})
 	mux.HandleFunc("POST /api/box/pair", func(w http.ResponseWriter, r *http.Request) {

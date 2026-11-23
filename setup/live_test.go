@@ -13,7 +13,7 @@ func TestLivePlan(t *testing.T) {
 	c := &dcClient{base: os.Getenv("DC_BASE"), token: os.Getenv("DC_TOKEN")}
 	lim, err := c.syncLimits(false)
 	t.Logf("limits %+v err %v", lim, err)
-	plan, _, err := c.plan(presetLineup("US|USA", []string{"locals", "sports", "news", "entertainment", "movies", "kids"}, os.Getenv("DC_LOCALS")))
+	plan, _, err := c.plan(presetLineup(LineupOpts{Prefix: "US|USA", Cats: []string{"locals", "sports", "news", "entertainment", "movies", "kids"}, Locals: os.Getenv("DC_LOCALS")}))
 	if err != nil {
 		t.Fatal(err)
 	}

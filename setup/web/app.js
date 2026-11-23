@@ -303,9 +303,36 @@ async function init() {
   fetch("/api/lineup/groups").then(r => r.json()).then(names => {
     $("#dc-cats").innerHTML = names.map(n => `<label><input type="checkbox" value="${esc(n)}" ${!S.lineupCats || !S.lineupCats.length || S.lineupCats.includes(n) ? "checked" : ""}> ${esc(n)}</label>`).join("");
   });
+  $$("#dc-extra input").forEach(i => i.checked = (S.lineupExtra || []).includes(i.value));
+  $("#dc-keep-empty").checked = !!S.lineupKeepEmpty;
   const lineupBody = () => {
-    S.lineupCats = $$("#dc-cats input:checked").map(i => i.value); save();
-    return { user: $("#dc-user").value, pass: $("#dc-pass").value, prefix: $("#dc-prefix").value, locals: $("#dc-locals").value.trim(), cats: S.lineupCats };
+    S.lineupCats = $$("#dc-cats input:checked").map(i => i.value);
+    S.lineupExtra = $$("#dc-extra input:checked").map(i => i.value);
+    S.lineupKeepEmpty = $("#dc-keep-empty").checked;
+    S.lineupAdd = S.lineupAdd || [];
+    save();
+    return { user: $("#dc-user").value, pass: $("#dc-pass").value, prefix: $("#dc-prefix").value, locals: $("#dc-locals").value.trim(),
+      cats: S.lineupCats, extra: S.lineupExtra, add: S.lineupAdd, keepEmpty: S.lineupKeepEmpty };
+  };
+  const filterHidden = () => {
+    const q = $("#dc-hidden-filter").value.trim().toLowerCase();
+    $$("#dc-hidden-list label").forEach(l => l.classList.toggle("hidden", !!q && !l.textContent.toLowerCase().includes(q)));
+  };
+  $("#dc-hidden-filter").oninput = filterHidden;
+  $("#dc-hidden").onclick = async () => {
+    const st = $("#dc-hidden-status"); st.textContent = "Reading your providers…";
+    try {
+      const rows = await api("/api/lineup/hidden", lineupBody());
+      const add = new Set(S.lineupAdd);
+      rows.sort((a, b) => add.has(b.name) - add.has(a.name));
+      $("#dc-hidden-list").innerHTML = rows.map(h => `<label><input type="checkbox" value="${esc(h.name)}" ${add.has(h.name) ? "checked" : ""}> ${esc(h.name)} <small>${h.streams} · ${esc(h.reason)}</small></label>`).join("");
+      $$("#dc-hidden-list input").forEach(i => i.onchange = () => {
+        S.lineupAdd = (S.lineupAdd || []).filter(n => n !== i.value).concat(i.checked ? [i.value] : []); save();
+        st.textContent = `${S.lineupAdd.length} ticked`;
+      });
+      st.textContent = `${rows.length} groups, ${rows.reduce((n, h) => n + h.streams, 0)} streams left out` + (S.lineupAdd.length ? `, ${S.lineupAdd.length} ticked` : "");
+      filterHidden();
+    } catch (e) { st.textContent = "✗ " + e.message; }
   };
   $("#vod-status").textContent = S.xcUser ? "✓ On (sent to the box with your settings)" : "";
   $("#vod-enable").onclick = async () => {

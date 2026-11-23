@@ -58,11 +58,24 @@
       </select>
     </div>
     <div class="checks" id="dc-cats"></div>
+    <label>Also include another country <span class="muted">(its sports, sports events and TV as their own groups)</span></label>
+    <div class="checks" id="dc-extra">
+      <label><input type="checkbox" value="UK|GB"> United Kingdom</label><label><input type="checkbox" value="CA|CANADA"> Canada</label>
+      <label><input type="checkbox" value="AU|AUSTRALIA"> Australia</label><label><input type="checkbox" value="IE|IRELAND"> Ireland</label>
+      <label><input type="checkbox" value="US|USA"> United States</label>
+    </div>
+    <div class="checks"><label><input type="checkbox" id="dc-keep-empty"> Keep empty event slots <small>("NBA 12: NO EVENT")</small></label></div>
     <label>Your local market <span class="muted">(city and/or station call letters, separated by |, e.g. Springfield|KYTV|KOLR)</span>
       <input id="dc-locals" data-key="lineupLocals" placeholder="Your city">
     </label>
     <div class="row"><button id="dc-preview">Preview</button><button id="dc-apply" class="primary">Build channel list</button><span id="dc-status" class="muted"></span></div>
     <div id="dc-result" class="card hidden"></div>
+    <details class="card" id="dc-hidden-box">
+      <summary><b>What's left out</b> — every provider group the list hides. Tick any to add it as its own group.</summary>
+      <div class="row"><button id="dc-hidden">Show what's left out</button><input id="dc-hidden-filter" placeholder="Filter, e.g. sports"><span id="dc-hidden-status" class="muted"></span></div>
+      <div id="dc-hidden-list" class="checks"></div>
+      <p class="muted small">Ticked groups are added the next time you click <b>Build channel list</b>.</p>
+    </details>
     <pre id="dc-log" class="hidden"></pre>
     <h3>Movies &amp; Series</h3>
     <p class="muted">Lets Live TV browse your providers' movies and TV series (turn on VOD for each provider in Dispatcharr's M3U settings first). Uses the Dispatcharr login above once to create a limited "vanilla-tv" user for the box.</p>

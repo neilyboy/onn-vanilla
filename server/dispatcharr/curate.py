@@ -17,8 +17,24 @@ from apps.m3u.models import M3UAccount
 
 cfg = json.loads(os.environ.get("CURATE_CONFIG") or "{}")
 APPLY = os.environ.get("CURATE_APPLY") == "1"
-JUNK = re.compile(r"\b(hd|fhd|uhd|4k|sd|hevc|h265|backup|alt|alternative|\(.*?\)|\[.*?\])\b", re.I)
-PREFIX = re.compile(r"^\s*(us|usa|united states)\s*[:|\-]?\s+", re.I)
+JUNK = re.compile(r"\b(hd|fhd|uhd|4k|sd|hevc|h265|lb|hb|backup|alt|alternative|\(.*?\)|\[.*?\])\b", re.I)
+PREFIX = re.compile(r"^\s*(us|usa|united states|uk|ca|au)\s*[:|\-]?\s+", re.I)
+# Country code prefixes: "DE: RTL" on streams, "AR | beIN" on groups. Streams only count "XX:" so US
+# state locals like "IL | Springfield | CBS" aren't mistaken for Israel.
+CODE = re.compile(r"^\s*([A-Z]{2,4})\s*:")
+GROUP_CODE = re.compile(r"^\s*([A-Z]{2,4})\s*[:|]")
+COUNTRY_CODES = set("""AD AE AF AL AM AO AR AT AU AZ BA BD BE BG BH BO BR BY CA CH CL CN CO CR CU CY CZ DE DK DO DZ
+EC EE EG ES ET FI FR GB GE GH GR GT HK HN HR HT HU ID IE IL IN IQ IR IS IT JM JO JP KE KR KW KZ LB LK LT LU LV LY MA MK
+MT MX MY NG NI NL NO NP NZ OM PA PE PH PK PL PR PS PT PY QA RO RS RU SA SE SG SI SK SN SV SY TH TN TR TW TZ UA UG UK US
+UY UZ VE VN YE ZA USA GER FRA ESP ITA POR POL NED SWE NOR DEN FIN TUR ARA RUS BRA ARG MEX IND PAK EXYU AFR CAN AUS""".split())
+ALLOWED = {c.strip().upper() for c in (cfg.get("countries") or "").split("|") if c.strip()}
+EMPTY_EVENT = re.compile(r"no events?\b|no games?\b|off ?air|^[^:]*:\s*$|\(209\d", re.I)
+
+
+def foreign(name, group=False):
+    """True when the name starts with another country's code and a countries list is set."""
+    m = (GROUP_CODE if group else CODE).match(name or "") if ALLOWED else None
+    return bool(m) and m.group(1) in COUNTRY_CODES and m.group(1) not in ALLOWED
 
 
 def sync_limits():
@@ -56,17 +72,29 @@ def natural(n):
     return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", n.lower())]
 
 
-def build_group(spec, rank):
+def claim(spec, all_groups):
+    """The provider groups this lineup group takes, skipping ones an earlier group already took."""
     pats = [re.compile(p, re.I) for p in spec["sources"]]
-    exclude = re.compile(spec["exclude"], re.I) if spec.get("exclude") else None
     skip = re.compile(spec["skip_groups"], re.I) if spec.get("skip_groups") else None
     own = {spec["name"] for spec in cfg.get("groups", [])}
-    groups = [g for g in ChannelGroup.objects.all()
-              if g.id not in CLAIMED and g.name not in own and any(p.search(g.name) for p in pats)
-              and not (SKIP_GROUPS and SKIP_GROUPS.search(g.name)) and not (skip and skip.search(g.name))]
+    any_country = spec.get("any_country")
+    groups = [g for g in all_groups
+              if g.id not in CLAIMED and (g.name not in own or g.name == spec["name"]) and any(p.search(g.name) for p in pats)
+              and not (SKIP_GROUPS and SKIP_GROUPS.search(g.name)) and not (skip and skip.search(g.name))
+              and (any_country or not foreign(g.name, group=True))]
     CLAIMED.update(g.id for g in groups)
+    return groups
+
+
+def build_group(spec, rank, all_groups):
+    exclude = re.compile(spec["exclude"], re.I) if spec.get("exclude") else None
+    groups = claim(spec, all_groups)
     streams = list(Stream.objects.filter(channel_group__in=groups, m3u_account__is_active=True, is_stale=False)
                    .select_related("m3u_account"))
+    if not spec.get("any_country"):
+        streams = [s for s in streams if not foreign(s.name)]
+    if cfg.get("drop_empty_events") and spec.get("merge") is False:
+        streams = [s for s in streams if not EMPTY_EVENT.search(s.name or "")]
     if exclude:
         streams = [s for s in streams if not exclude.search(s.name or "")]
     if spec.get("include"):
@@ -127,7 +155,26 @@ def logo_for(url):
         return None
 
 
+def hidden():
+    """Lists provider groups the lineup leaves out, so you can add any of them back."""
+    from django.db.models import Count
+    all_groups = list(ChannelGroup.objects.all())
+    for spec in cfg.get("groups", []):
+        claim(spec, all_groups)
+    own = {spec["name"] for spec in cfg.get("groups", [])}
+    counts = {r["channel_group"]: r["n"] for r in Stream.objects.filter(m3u_account__is_active=True, is_stale=False)
+              .values("channel_group").annotate(n=Count("id"))}
+    rows = [(g.name, counts[g.id]) for g in all_groups if g.id not in CLAIMED and g.name not in own and counts.get(g.id)]
+    for name, n in sorted(rows, key=lambda r: natural(r[0])):
+        why = "skipped" if SKIP_GROUPS and SKIP_GROUPS.search(name) else "other country" if foreign(name, group=True) else "no group"
+        print(f"hidden {n:>6}  {name}  ({why})")
+    print(f"hidden: {len(rows)} provider groups, {sum(n for _, n in rows)} streams. Add one with a group like "
+          '{"name": "...", "start": 80000, "any_country": true, "sources": ["^exact group name$"]}')
+
+
 def main():
+    if os.environ.get("CURATE_HIDDEN") == "1":
+        return hidden()
     if os.environ.get("CURATE_SYNC_LIMITS") == "1":
         sync_limits()
     accts = list(M3UAccount.objects.filter(is_active=True))
@@ -135,8 +182,9 @@ def main():
     rank = {a.id: i for i, a in enumerate(accts)}
     print("provider order:", ", ".join(f"{a.name}({a.max_streams})" for a in accts))
     total = 0
+    all_groups = list(ChannelGroup.objects.all())
     for spec in cfg.get("groups", []):
-        src, chans = build_group(spec, rank)
+        src, chans = build_group(spec, rank, all_groups)
         epg_hits = sum(1 for c in chans if epg_for(c["tvg_id"]))
         print(f"\n== {spec['name']}: {len(chans)} channels from {len(src)} source groups, guide data for {epg_hits}")
         for g in src:

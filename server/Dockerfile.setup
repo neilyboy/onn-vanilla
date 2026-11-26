@@ -1,0 +1,15 @@
+# The Onn Vanilla setup wizard as an always-on service. Built by docker-compose.yml (service "setup").
+FROM debian:trixie-slim
+ARG VERSION=latest
+ARG TARGETARCH
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl adb \
+ && rm -rf /var/lib/apt/lists/*
+RUN arch=${TARGETARCH:-amd64}; \
+    if [ "$VERSION" = latest ]; then url=https://github.com/neilyboy/onn-vanilla/releases/latest/download/onn-vanilla-setup-linux-$arch; \
+    else url=https://github.com/neilyboy/onn-vanilla/releases/download/$VERSION/onn-vanilla-setup-linux-$arch; fi; \
+    curl -fsSL "$url" -o /usr/local/bin/onn-vanilla-setup && chmod +x /usr/local/bin/onn-vanilla-setup
+# Settings, the wizard password and adb's pairing keys all live in /data.
+ENV HOME=/data ONN_VANILLA_DATA=/data
+VOLUME /data
+EXPOSE 8765
+ENTRYPOINT ["onn-vanilla-setup", "--listen", "0.0.0.0", "--no-browser"]

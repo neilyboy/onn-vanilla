@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Onn Vanilla Setup · Sign in</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .login { width: min(380px, 90vw); }
+  .login input { width: 100%; box-sizing: border-box; margin: 6px 0; }
+  .login button { width: 100%; margin-top: 10px; }
+  .err { color: #ff6b6b; min-height: 1.4em; }
+</style>
+</head>
+<body>
+<form class="card login" id="f">
+  <div class="brand"><span class="dot"></span>Onn Vanilla</div>
+  <h2 id="title">Sign in</h2>
+  <p class="muted" id="hint"></p>
+  <input id="pw" type="password" placeholder="Password" autocomplete="current-password" required>
+  <input id="pw2" type="password" placeholder="Type it again" autocomplete="new-password" hidden>
+  <button type="submit" id="go">Sign in</button>
+  <p class="err" id="err"></p>
+</form>
+<script>
+const $ = s => document.querySelector(s);
+let mode = "login";
+async function post(path, body) {
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || r.statusText);
+}
+(async () => {
+  const s = await (await fetch("/api/auth")).json();
+  if (s.signedIn) return location.replace("/");
+  if (!s.hasPassword) {
+    if (s.canSetup) {
+      mode = "setup";
+      $("#title").textContent = "Choose a password";
+      $("#hint").textContent = "You'll use it to open this wizard from your phone or any computer. At least 8 characters.";
+      $("#pw").autocomplete = "new-password";
+      $("#pw2").hidden = false;
+      $("#go").textContent = "Save and continue";
+    } else {
+      $("#title").textContent = "Not set up yet";
+      $("#hint").textContent = "Open the wizard from your home network first (http://<server>:8765) to choose its password.";
+      $("#f").querySelectorAll("input,button").forEach(e => e.hidden = true);
+    }
+  }
+  $("#pw").focus();
+})();
+$("#f").addEventListener("submit", async e => {
+  e.preventDefault();
+  $("#err").textContent = "";
+  try {
+    if (mode === "setup") {
+      if ($("#pw").value !== $("#pw2").value) throw new Error("The two passwords don't match.");
+      await post("/api/auth/setup", { password: $("#pw").value });
+    } else {
+      await post("/api/auth/login", { password: $("#pw").value });
+    }
+    location.replace("/");
+  } catch (x) { $("#err").textContent = x.message; }
+});
+</script>
+</body>
+</html>

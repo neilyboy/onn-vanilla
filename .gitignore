@@ -14,3 +14,5 @@ server/launcher-assets/config/launcher-config.json
 setup/apks/*.apk
 setup/dist/
 .kotlin/
+server/setup-data/
+server/dispatcharr/data/

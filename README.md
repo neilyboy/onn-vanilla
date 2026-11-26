@@ -98,17 +98,28 @@ Nothing personal ships in this repo. The setup app keeps your settings on your c
 
 ### 1. Server (once)
 
-On any always-on Linux machine:
+On any always-on Linux machine (Ubuntu Server is tested):
 
 ```sh
 git clone https://github.com/neilyboy/onn-vanilla && cd onn-vanilla/server && ./install.sh
 ```
 
-This installs Docker if needed, starts Dispatcharr on port 9191, asks for your local TV market, and schedules a nightly channel-list refresh. Re-running it on a new server rebuilds everything the same way. Then:
+This installs Docker if needed and starts Dispatcharr on port 9191 and the setup wizard on port 8765. Re-running it on a new server sets everything up the same way. Then:
 
-1. Open `http://<server>:9191` and create your admin login.
+1. Open `http://<server>:9191` and create your Dispatcharr admin login.
 2. **M3U & EPG Manager → Add M3U → Xtream Codes**, once per provider (server URL, username, password). Wait for each to finish loading.
-3. Build the channel list: install the [Lineup Manager plugin](https://github.com/neilyboy/dispatcharr-lineup-manager) (Dispatcharr → Plugins → Import), press **Build lineup**, then **Turn on schedule**. Without the plugin, `./refresh-lineup.sh` does the same from the command line.
+3. Build the channel list: install the [Lineup Manager plugin](https://github.com/neilyboy/dispatcharr-lineup-manager) (Dispatcharr → Plugins → Import), type your ZIP code, press **Build lineup**, then **Turn on schedule**.
+4. Open the wizard at `http://<server>:8765` from a phone or computer on your network and **choose its password**. The first password can only be set from your home network, not through a reverse proxy.
+
+#### Opening the wizard from anywhere
+
+The wizard has its own password, and a signed-in phone stays signed in for 6 months. To reach it away from home:
+
+- **Your own domain (HTTPS):** point a subdomain at your reverse proxy and forward it to `http://<server>:8765`. With Caddy: `setup.example.com { reverse_proxy 192.168.1.10:8765 }`. Nginx Proxy Manager and Traefik work the same way. Don't expose port 8765 without HTTPS.
+- **No domain:** install [Tailscale](https://tailscale.com) on the server and your phone, then open `http://<server's Tailscale name>:8765`.
+- **Forgot the password:** `docker exec onn-vanilla-setup onn-vanilla-setup --reset-password`, then open the wizard from your home network to choose a new one. **Change password** and **Sign out** are at the bottom left of the wizard.
+
+**Boxes at another house:** the wizard flashes a box over the network, so the server must be able to reach the box's IP. A box on a network linked to yours (site-to-site VPN, or the same Tailscale network as a subnet router) works from your phone like one at home. Otherwise run the desktop setup app (below) on a laptop at that house.
 
 ### 2. Your channel list
 
@@ -129,14 +140,14 @@ Your choices live in `~/.config/onn-vanilla/lineup.json` (copied from [`lineup.f
 
 ### 3. TV boxes
 
-Download `onn-vanilla-setup-<your OS>` from [Releases](../../releases) and run it. Your browser opens the wizard:
+Open the wizard (`http://<server>:8765`), or download `onn-vanilla-setup-<your OS>` from [Releases](../../releases) and run it on any computer, which opens the same wizard in your browser:
 
 1. **Live TV source:** your Dispatcharr address. Test the playlist, or build the channel list from here.
 2. **Home screen:** weather location (ZIP or city), theme, accent, clock and greeting.
 3. **Sports:** leagues and favorite teams.
 4. **Set up a box:** the wizard walks you through turning on **Wireless debugging** (Android 11+/Google TV) and pairing with the code on screen, or USB debugging on older boxes. Click **Inspect**, tick the apps to remove, run a **Dry run**, then **Set up this box**.
 
-The setup app downloads Google's `adb` itself if you don't have it. To run it on a headless server and open it from another computer, use `--listen 0.0.0.0`. It prints a link that contains a one-time access token.
+The setup app downloads Google's `adb` itself if you don't have it. Run by hand on a headless machine, use `--listen 0.0.0.0` so other computers can open it, and `--data <folder>` to choose where settings and the password are kept.
 
 ### Live TV appearance
 

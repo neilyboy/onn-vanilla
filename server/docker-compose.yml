@@ -1,5 +1,5 @@
-# Dispatcharr (merges your IPTV providers into one playlist + guide) and an optional
-# web server for launcher-config.json / wallpapers. Run: docker compose up -d
+# Dispatcharr (merges your IPTV providers into one playlist + guide), the setup wizard, and an
+# optional web server for launcher-config.json / wallpapers. Run: docker compose up -d
 name: tvstack
 
 services:
@@ -16,6 +16,19 @@ services:
       - REDIS_HOST=localhost
       - CELERY_BROKER_URL=redis://localhost:6379/0
       - DISPATCHARR_LOG_LEVEL=info
+      - TZ=${TZ:-UTC}
+
+  # The setup wizard on port 8765. Host networking lets it reach TV boxes on your network over adb.
+  setup:
+    build:
+      context: .
+      dockerfile: Dockerfile.setup
+    container_name: onn-vanilla-setup
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./setup-data:/data
+    environment:
       - TZ=${TZ:-UTC}
 
   # Optional: only needed if you want boxes to re-read a shared config on every start.

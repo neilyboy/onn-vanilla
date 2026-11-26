@@ -25,6 +25,7 @@ async function api(path, body) {
   const r = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const ct = r.headers.get("content-type") || "";
   const data = ct.includes("json") ? await r.json() : await r.text();
+  if (r.status === 401 && !path.startsWith("/api/auth")) location.replace("/login");
   if (!r.ok) throw new Error(data.error || data);
   return data;
 }
@@ -33,7 +34,7 @@ function save() {
   clearTimeout(saveTimer);
   $("#saved").textContent = "Saving…";
   saveTimer = setTimeout(async () => {
-    try { await api("/api/setup", S); $("#saved").textContent = "Saved on this computer only"; }
+    try { await api("/api/setup", S); $("#saved").textContent = "Saved on this server"; }
     catch (e) { $("#saved").textContent = "Save failed: " + e.message; }
   }, 300);
 }
@@ -368,3 +369,11 @@ async function init() {
   $("#restore").onclick = () => confirm("Put back every app that was on this box before it was first set up?") && run("/api/box/restore", { ip: $("#box-ip").value.trim() });
 }
 init();
+
+$("#signout")?.addEventListener("click", async () => { await api("/api/auth/logout", {}); location.replace("/login"); });
+$("#chpw")?.addEventListener("click", async () => {
+  const current = prompt("Current password"); if (current === null) return;
+  const password = prompt("New password (at least 8 characters)"); if (password === null) return;
+  try { await api("/api/auth/password", { current, password }); alert("Password changed. Other devices need to sign in again."); }
+  catch (e) { alert(e.message); }
+});

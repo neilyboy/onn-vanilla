@@ -15,6 +15,7 @@ data class Look(
     val hero: Int = 1,
     val adult: Boolean = true,
     val emptySlots: Boolean = false,
+    val layout: String = "classic",
 ) {
     val rowHeightDp get() = listOf(50, 62, 80)[rows.coerceIn(0, 2)]
 
@@ -22,7 +23,7 @@ data class Look(
         context.getSharedPreferences("look", Context.MODE_PRIVATE).edit()
             .putFloat("scale", scale).putFloat("text", text).putInt("rows", rows).putInt("hours", guideHours)
             .putString("accent", accent).putString("background", background).putBoolean("logos", guideLogos)
-            .putInt("hero", hero).putBoolean("adult", adult).putBoolean("empty", emptySlots).apply()
+            .putInt("hero", hero).putBoolean("adult", adult).putBoolean("empty", emptySlots).putString("layout", layout).apply()
     }
 
     companion object {
@@ -31,6 +32,7 @@ data class Look(
         val ROWS = listOf("Compact", "Normal", "Large")
         val HOURS = listOf(2, 3, 4)
         val HEROES = listOf("Off", "Compact", "Large")
+        val LAYOUTS = linkedMapOf("classic" to "Classic grid", "river" to "River: what's on now, by topic", "surf" to "Surf: full-screen channel flipping")
         val ACCENTS = listOf(
             "" to "From config", "#E5484D" to "Red", "#3E8BFF" to "Blue", "#30A46C" to "Green",
             "#F76B15" to "Orange", "#8E4EC6" to "Purple", "#12A594" to "Teal", "#FFC53D" to "Gold", "#EDEDED" to "White",
@@ -48,7 +50,7 @@ data class Look(
             return Look(
                 p.getFloat("scale", 1f), p.getFloat("text", 1f), p.getInt("rows", 1), p.getInt("hours", 3),
                 p.getString("accent", "") ?: "", p.getString("background", "midnight") ?: "midnight", p.getBoolean("logos", true),
-                p.getInt("hero", 1), p.getBoolean("adult", true), p.getBoolean("empty", false),
+                p.getInt("hero", 1), p.getBoolean("adult", true), p.getBoolean("empty", false), p.getString("layout", "classic") ?: "classic",
             )
         }
 
@@ -56,7 +58,7 @@ data class Look(
             o.optDouble("scale", 1.0).toFloat(), o.optDouble("text", 1.0).toFloat(), o.optInt("rows", 1),
             o.optInt("guide_hours", 3), o.optString("accent", ""), o.optString("background", "midnight"),
             o.optBoolean("guide_logos", true), o.optInt("hero", 1), o.optBoolean("adult_channels", true),
-            o.optBoolean("empty_event_slots", false),
+            o.optBoolean("empty_event_slots", false), o.optString("guide_layout", "classic"),
         )
     }
 }

@@ -124,7 +124,7 @@ fun LiveApp(a: MainActivity) {
                 when (t) {
                     Tab.Home -> HomeTab(a, c, accent)
                     Tab.Sports -> SportsTab(a, c, accent)
-                    Tab.Guide -> GuideTab(a, c, accent)
+                    Tab.Guide -> when (look.layout) { "river" -> RiverTab(a, c, accent); "surf" -> SurfTab(a, c, accent); else -> GuideTab(a, c, accent) }
                     Tab.Favorites -> GuideTab(a, c, accent, favoritesOnly = true)
                     Tab.Movies -> c?.vodSources?.takeIf { it.isNotEmpty() }?.let { VodSources(a, it, false, accent) }
                     Tab.Series -> c?.vodSources?.takeIf { it.isNotEmpty() }?.let { VodSources(a, it, true, accent) }
@@ -431,7 +431,7 @@ private fun ChannelShelf(a: MainActivity, title: String, list: List<Channel>, gu
 }
 
 @Composable
-private fun ChannelCard(a: MainActivity, ch: Channel, progs: List<Programme>?, accent: Color, modifier: Modifier) {
+internal fun ChannelCard(a: MainActivity, ch: Channel, progs: List<Programme>?, accent: Color, modifier: Modifier) {
     val (now, next) = nowNext(progs)
     val fav = ch.name in a.favorites.value
     Surface(
@@ -464,7 +464,7 @@ private fun ChannelCard(a: MainActivity, ch: Channel, progs: List<Programme>?, a
 }
 
 @Composable
-private fun ProgressBar(p: Programme, accent: Color) {
+internal fun ProgressBar(p: Programme, accent: Color) {
     val frac = ((System.currentTimeMillis() - p.start).toFloat() / (p.stop - p.start).coerceAtLeast(1)).coerceIn(0f, 1f)
     Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x33FFFFFF))) {
         Box(Modifier.fillMaxWidth(frac).fillMaxHeight().background(accent))
@@ -812,6 +812,7 @@ private fun LookTab(a: MainActivity, accent: Color) {
         item { LookRow("Featured game", Look.HEROES[l.hero.coerceIn(0, 2)], accent) { a.setLook(l.copy(hero = (l.hero + 1) % 3)) } }
         item { LookRow("Text size", Look.TEXTS.firstOrNull { it.first == l.text }?.second ?: pct(l.text), accent) {
             a.setLook(l.copy(text = Look.TEXTS.map { it.first }.next(l.text))) } }
+        item { LookRow("Guide layout", Look.LAYOUTS[l.layout] ?: "Classic grid", accent) { a.setLook(l.copy(layout = Look.LAYOUTS.keys.toList().next(l.layout))) } }
         item { LookRow("Guide rows", Look.ROWS[l.rows.coerceIn(0, 2)], accent) { a.setLook(l.copy(rows = (l.rows + 1) % 3)) } }
         item { LookRow("Guide shows", "${l.guideHours} hours", accent) { a.setLook(l.copy(guideHours = Look.HOURS.next(l.guideHours))) } }
         item { LookRow("Guide channel logos", if (l.guideLogos) "On" else "Off", accent) { a.setLook(l.copy(guideLogos = !l.guideLogos)) } }

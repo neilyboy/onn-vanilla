@@ -319,30 +319,32 @@ private const val ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/C
 /** A 3x3 map of zoom-7 tiles with the RainViewer radar on top, centered on the home location. Loops [frames] when given. */
 @Composable
 private fun Radar(lat: Double, lon: Double, radarBase: String, height: Dp, allFrames: List<Pair<String, Long>> = emptyList()) {
-    // The last 8 frames (~80 min) keep the number of tiles held in memory reasonable on a TV box.
-    val frames = remember(allFrames) { allFrames.takeLast(8) }
+    // The last 6 frames (~1 hour) keep the number of tiles held in memory reasonable on a TV box.
+    val frames = remember(allFrames) { allFrames.takeLast(6) }
     val loop = frames.size > 1
     var frame by remember(frames) { mutableIntStateOf(frames.lastIndex.coerceAtLeast(0)) }
     if (loop) LaunchedEffect(frames) {
         while (true) { delay(if (frame == frames.lastIndex) 1800 else 550); frame = (frame + 1) % frames.size }
     }
     val layers = if (loop) frames.map { it.first } else listOf(radarBase)
-    val z = 7
+    // Full screen shows a wider area (one zoom level out) with as many tiles as it takes to fill the panel.
+    val z = if (loop) 6 else 7
     val n = 1 shl z
     val fx = (lon + 180) / 360 * n
     val fy = (1 - ln(tan(lat * PI / 180) + 1 / cos(lat * PI / 180)) / PI) / 2 * n
     val tx = floor(fx).toInt(); val ty = floor(fy).toInt()
-    val hc = if (loop) 2 else 1
     BoxWithConstraints(Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(10.dp)).background(Color(0xFF1B1F27))) {
-        // Full screen: bigger tiles, five across, so the map fills the wide view.
-        val tile = if (loop) maxHeight / 3 else 128.dp
+        val tile = if (loop) 200.dp else 128.dp
+        val hc = if (loop) kotlin.math.ceil(maxWidth / tile / 2 + 0.5f).toInt() else 1
+        val hr = if (loop) kotlin.math.ceil(maxHeight / tile / 2 + 0.5f).toInt() else 1
         val ox = maxWidth / 2 - tile * (hc + (fx - tx)).toFloat()
-        val oy = maxHeight / 2 - tile * (1 + (fy - ty)).toFloat()
+        val oy = maxHeight / 2 - tile * (hr + (fy - ty)).toFloat()
         // Unbounded so a map bigger than the panel isn't re-centered by layout, which would move it off the home dot.
-        Box(Modifier.offset(ox, oy).wrapContentSize(Alignment.TopStart, unbounded = true).requiredSize(tile * (2 * hc + 1), tile * 3)) {
-            for (dy in -1..1) for (dx in -hc..hc) {
+        Box(Modifier.offset(ox, oy).wrapContentSize(Alignment.TopStart, unbounded = true).requiredSize(tile * (2 * hc + 1), tile * (2 * hr + 1))) {
+            for (dy in -hr..hr) for (dx in -hc..hc) {
                 val x = ((tx + dx) % n + n) % n; val y = ty + dy
-                val m = Modifier.offset(tile * (dx + hc), tile * (dy + 1)).size(tile)
+                if (y !in 0 until n) continue
+                val m = Modifier.offset(tile * (dx + hc), tile * (dy + hr)).size(tile)
                 AsyncImage("$ESRI/World_Dark_Gray_Base/MapServer/tile/$z/$y/$x", null, modifier = m)
                 // Every frame stays composed (only the current one visible) so the loop doesn't flash while tiles load.
                 layers.forEachIndexed { i, base ->

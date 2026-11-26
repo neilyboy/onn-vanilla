@@ -142,8 +142,8 @@ Your choices live in `~/.config/onn-vanilla/lineup.json` (copied from [`lineup.f
 
 Open the wizard (`http://<server>:8765`), or download `onn-vanilla-setup-<your OS>` from [Releases](../../releases) and run it on any computer, which opens the same wizard in your browser:
 
-1. **Live TV source:** your Dispatcharr address. Test the playlist, or build the channel list from here.
-2. **Home screen:** weather location (ZIP or city), theme, accent, clock and greeting.
+1. **Live TV source:** your Dispatcharr address, and a test that the playlist loads.
+2. **Home screen:** your ZIP code (weather, radar and local news), theme, accent, clock and greeting.
 3. **Sports:** leagues and favorite teams.
 4. **Set up a box:** the wizard walks you through turning on **Wireless debugging** (Android 11+/Google TV) and pairing with the code on screen, or USB debugging on older boxes. Click **Inspect**, tick the apps to remove, run a **Dry run**, then **Set up this box**.
 

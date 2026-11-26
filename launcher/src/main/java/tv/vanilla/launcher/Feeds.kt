@@ -11,7 +11,7 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 
 data class CalEvent(val start: ZonedDateTime, val allDay: Boolean, val title: String)
-data class Headline(val source: String, val title: String, val image: String = "", val at: Long = 0)
+data class Headline(val source: String, val title: String, val image: String = "", val at: Long = 0, val summary: String = "", val link: String = "")
 data class Alert(val event: String, val headline: String, val severity: String)
 
 /** Upcoming events from iCal (.ics) feeds, including simple daily/weekly/monthly/yearly repeats. */
@@ -112,7 +112,7 @@ private fun parseFeed(xml: String): List<Headline> {
     p.setInput(xml.reader())
     var source = ""
     var inItem = false
-    var title = ""; var image = ""; var at = 0L
+    var title = ""; var image = ""; var at = 0L; var summary = ""; var link = ""; var itemSource = ""
     val out = ArrayList<Headline>()
     // A malformed tail (bad entity etc.) keeps whatever parsed before it.
     runCatching {
@@ -120,12 +120,18 @@ private fun parseFeed(xml: String): List<Headline> {
             if (p.eventType == XmlPullParser.START_TAG) {
                 val name = p.name
                 when {
-                    name == "item" || name == "entry" -> { inItem = true; title = ""; image = ""; at = 0L }
+                    name == "item" || name == "entry" -> { inItem = true; title = ""; image = ""; at = 0L; summary = ""; link = ""; itemSource = "" }
                     name == "title" -> {
                         val t = runCatching { p.nextText() }.getOrDefault("").trim()
                         if (inItem) title = t else if (source.isBlank()) source = t
                     }
                     !inItem -> Unit
+                    name == "link" -> {
+                        val href = p.getAttributeValue(null, "href")
+                        val t = href ?: runCatching { p.nextText() }.getOrDefault("").trim()
+                        if (link.isBlank() && t.startsWith("http")) link = t
+                    }
+                    name == "source" -> itemSource = runCatching { p.nextText() }.getOrDefault("").trim()
                     name == "media:content" || name == "media:thumbnail" || name == "enclosure" -> {
                         val url = p.getAttributeValue(null, "url") ?: ""
                         val type = p.getAttributeValue(null, "type") ?: p.getAttributeValue(null, "medium") ?: "image"
@@ -134,6 +140,7 @@ private fun parseFeed(xml: String): List<Headline> {
                     name == "description" || name == "content:encoded" || name == "content" || name == "summary" -> {
                         val t = runCatching { p.nextText() }.getOrDefault("")
                         if (image.isBlank()) IMG.find(t)?.let { image = it.groupValues[1].replace("&amp;", "&") }
+                        if (summary.isBlank()) summary = plainText(t)
                     }
                     name == "pubDate" || name == "published" || name == "updated" -> {
                         val t = runCatching { p.nextText() }.getOrDefault("").trim()
@@ -141,13 +148,16 @@ private fun parseFeed(xml: String): List<Headline> {
                     }
                 }
             } else if (p.eventType == XmlPullParser.END_TAG && (p.name == "item" || p.name == "entry")) {
-                if (title.isNotBlank()) out += Headline(source, title, image.takeUnless { TRACKER.containsMatchIn(it) } ?: "", at)
+                // Google News titles end in " - Publisher" and their description only repeats the title.
+                val clean = if (itemSource.isNotBlank()) title.removeSuffix(" - $itemSource") else title
+                val sum = summary.takeUnless { it.length < 40 || it.contains(clean.take(30)) }?.take(500) ?: ""
+                if (title.isNotBlank()) out += Headline(itemSource, clean, image.takeUnless { TRACKER.containsMatchIn(it) } ?: "", at, sum, link)
                 inItem = false
             }
         }
     }
     val short = source.substringBefore(" - ").substringBefore(" | ").substringBefore(":").trim().take(24)
-    return out.map { it.copy(source = short) }
+    return out.map { it.copy(source = it.source.ifBlank { short }.take(24)) }
 }
 
 private fun parseFeedDate(s: String): Long = runCatching {
@@ -176,3 +186,7 @@ fun fetchRadarBase(): String? = runCatching {
     val past = r.getJSONObject("radar").getJSONArray("past")
     r.getString("host") + past.getJSONObject(past.length() - 1).getString("path")
 }.getOrNull()
+
+private fun plainText(html: String): String =
+    android.text.Html.fromHtml(html, android.text.Html.FROM_HTML_MODE_LEGACY).toString()
+        .replace('\uFFFC', ' ').replace(Regex("\\s+"), " ").trim()

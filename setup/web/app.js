@@ -166,17 +166,28 @@ function renderLocation() {
     ? `Weather for ${S.location || "selected location"}${S.timezone ? " · time zone " + S.timezone : ""}`
     : "No weather location set (the weather widget is hidden).";
 }
+// Swaps the local news feeds added for the last ZIP for this one's (town + county); hand-added feeds stay.
+async function addLocalNews(p) {
+  try {
+    const r = await api(`/api/localnews?lat=${p.latitude}&lon=${p.longitude}&place=${encodeURIComponent(p.name)}`);
+    const mine = (S.newsLocal || "").split("\n").map(l => l.trim()).filter(l => l && !l.includes("news.google.com/rss/search"));
+    S.newsLocal = [...r.feeds, ...mine].join("\n");
+    $('[data-key="newsLocal"]').value = S.newsLocal; save();
+    $("#loc-current").textContent += ` · local news for ${r.areas.join(" and ")}`;
+  } catch (e) { /* weather still works without local news */ }
+}
 async function searchLocation() {
   const q = $("#loc-q").value.trim(); if (!q) return;
   const out = $("#loc-results"); out.innerHTML = `<span class="muted">Searching…</span>`;
   try {
     const list = await api("/api/geocode?q=" + encodeURIComponent(q));
     out.innerHTML = list.map((p, i) => `<span class="chip" data-i="${i}">${esc(p.name)}</span>`).join("");
-    $$(".chip", out).forEach(c => c.onclick = () => {
-      const p = list[c.dataset.i];
+    const pick = p => {
       Object.assign(S, { location: p.name.replace(/ \(\w+\)$/, ""), latitude: p.latitude, longitude: p.longitude, timezone: p.timezone || S.timezone });
-      out.innerHTML = ""; renderLocation(); save();
-    });
+      out.innerHTML = ""; renderLocation(); save(); addLocalNews(p);
+    };
+    $$(".chip", out).forEach(c => c.onclick = () => pick(list[c.dataset.i]));
+    if (list.length === 1) pick(list[0]);
   } catch (e) { out.innerHTML = `<span class="muted">${esc(e.message)}</span>`; }
 }
 

@@ -10,6 +10,9 @@ import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -83,7 +86,7 @@ fun Widget(id: String, activity: MainActivity, cfg: LauncherConfig, theme: Vanil
         "resume" -> g?.resume?.takeIf { it.isNotEmpty() }?.let { Posters("Continue watching", it.map { r -> Triple(r.title, r.poster, r.progress) }, theme) { i -> openLive(activity, "vod_key", it[i].key) } }
         "newvod" -> g?.newVod?.takeIf { it.isNotEmpty() }?.let { Posters("New on Movies & Series", it.map { v -> Triple(v.title, v.poster, -1f) }, theme) { i -> openLive(activity, "vod_id", (if (it[i].series) "s:" else "m:") + it[i].id) } }
         "calendar" -> Week(activity.agenda.value, cfg.countdowns, theme, wide)
-        "news" -> NewsCards(activity.news.value, theme, wide)
+        "news" -> if (LocalZoom.current) NewsPage(activity.news.value, activity, theme) else NewsCards(activity.news.value, theme, wide) { activity.newsLead.value = it }
         "ha" -> activity.ha.value.filter { it.domain != "camera" }.takeIf { it.isNotEmpty() }?.let { HomePanel(it, activity, theme) }
         "cameras" -> Cameras(activity.ha.value.filter { it.domain == "camera" }, g?.cameras.orEmpty(), activity, cfg, theme)
         "weather" -> activity.weather.value?.let { HourlyRadar(it, activity.radar.value, activity.radarFrames.value, cfg, theme, wide) }
@@ -258,12 +261,13 @@ private fun Week(events: List<CalEvent>, custom: List<String>, theme: VanillaThe
 }
 
 @Composable
-private fun NewsCards(items: List<Headline>, theme: VanillaTheme, wide: Boolean) {
+private fun NewsCards(items: List<Headline>, theme: VanillaTheme, wide: Boolean, onLead: (Headline) -> Unit = {}) {
     if (items.isEmpty()) return
     val withImg = items.filter { it.image.isNotBlank() }.ifEmpty { items }
     var i by remember(items) { mutableIntStateOf(0) }
     LaunchedEffect(items) { while (true) { delay(10_000); i++ } }
     val lead = withImg[i % withImg.size]
+    LaunchedEffect(lead) { onLead(lead) }
     Panel(theme) {
         Title("Headlines", theme)
         Crossfade(lead, label = "lead") { h ->
@@ -501,6 +505,84 @@ private fun Sports(g: LiveGlance, theme: VanillaTheme, wide: Boolean) {
                         val whenText = if (n.live) "LIVE" else java.time.Instant.ofEpochMilli(n.start).atZone(ZoneId.systemDefault()).format(time)
                         Text(listOf(whenText, n.network).filter { it.isNotBlank() }.joinToString(" · "), color = if (n.live) Color(0xFFE5484D) else theme.text, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
+                }
+            }
+        }
+    }
+}
+
+private fun ago(at: Long): String {
+    if (at <= 0) return ""
+    val m = (System.currentTimeMillis() - at) / 60_000
+    return when { m < 1 -> "just now"; m < 60 -> "${m}m ago"; m < 1440 -> "${m / 60}h ago"; else -> "${m / 1440}d ago" }
+}
+
+@Composable
+private fun QrCode(text: String, size: Dp) {
+    val bmp = remember(text) {
+        runCatching {
+            val m = com.google.zxing.qrcode.QRCodeWriter().encode(text, com.google.zxing.BarcodeFormat.QR_CODE, 256, 256, mapOf(com.google.zxing.EncodeHintType.MARGIN to 1))
+            android.graphics.Bitmap.createBitmap(m.width, m.height, android.graphics.Bitmap.Config.RGB_565).apply {
+                for (x in 0 until m.width) for (y in 0 until m.height) setPixel(x, y, if (m[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
+            }.asImageBitmap()
+        }.getOrNull()
+    } ?: return
+    androidx.compose.foundation.Image(bmp, null, modifier = Modifier.size(size).clip(RoundedCornerShape(8.dp)))
+}
+
+/** Full-screen Headlines: every story on the left, the selected one large on the right with its summary and a QR code. */
+@Composable
+private fun NewsPage(items: List<Headline>, a: MainActivity, theme: VanillaTheme) {
+    if (items.isEmpty()) return
+    val ctx = LocalContext.current
+    val start = remember(items) { items.indexOfFirst { it.title == a.newsLead.value?.title }.coerceAtLeast(0) }
+    var sel by remember(items) { mutableIntStateOf(start) }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState(start)
+    val first = remember { androidx.compose.ui.focus.FocusRequester() }
+    LaunchedEffect(Unit) { delay(300); runCatching { first.requestFocus() } }
+    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(32.dp)) {
+        androidx.compose.foundation.lazy.LazyColumn(Modifier.width(500.dp).fillMaxHeight(), state = listState,
+            verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(6.dp)) {
+            items(items.size) { i ->
+                val h = items[i]
+                Surface(
+                    onClick = { sel = i },
+                    modifier = Modifier.fillMaxWidth().height(78.dp)
+                        .then(if (i == start) Modifier.focusRequester(first) else Modifier)
+                        .onFocusChanged { if (it.isFocused) sel = i },
+                    shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
+                    colors = tileColors(theme),
+                    scale = ClickableSurfaceDefaults.scale(focusedScale = 1.02f),
+                    border = ClickableSurfaceDefaults.border(focusedBorder = Border(androidx.compose.foundation.BorderStroke(2.dp, theme.accent))),
+                ) {
+                    Row(Modifier.fillMaxSize().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(108.dp, 61.dp).clip(RoundedCornerShape(8.dp)).background(theme.accent.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
+                            if (h.image.isNotBlank()) AsyncImage(coil.request.ImageRequest.Builder(ctx).data(h.image).size(320, 180).build(), null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                            else Text(h.source.take(14).uppercase(), color = theme.accent, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 2, modifier = Modifier.padding(6.dp))
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text(listOf(h.source.uppercase(), ago(h.at)).filter { it.isNotBlank() }.joinToString(" · "), color = theme.accent, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            Text(h.title, color = theme.text, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+            }
+        }
+        val h = items[sel.coerceIn(items.indices)]
+        Column(Modifier.weight(1f).fillMaxHeight()) {
+            if (h.image.isNotBlank()) {
+                AsyncImage(coil.request.ImageRequest.Builder(ctx).data(h.image).size(1280, 720).build(), null, contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxWidth().height(170.dp).clip(RoundedCornerShape(14.dp)))
+                Spacer(Modifier.height(14.dp))
+            }
+            Text(listOf(h.source.uppercase(), ago(h.at)).filter { it.isNotBlank() }.joinToString(" · "), color = theme.accent, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Text(h.title, color = theme.text, fontSize = 24.sp, fontWeight = FontWeight.Medium, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+            Row(Modifier.padding(top = 10.dp)) {
+                Text(h.summary, color = theme.subText, fontSize = 15.sp, maxLines = 6, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                if (h.link.isNotBlank()) Column(Modifier.padding(start = 16.dp).width(96.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    QrCode(h.link, 88.dp)
+                    Text("Scan to read", color = theme.subText, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
                 }
             }
         }

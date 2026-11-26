@@ -31,6 +31,8 @@ class MainActivity : ComponentActivity() {
     val idle = mutableStateOf(false)
     val agenda = mutableStateOf<List<CalEvent>>(emptyList())
     val news = mutableStateOf<List<Headline>>(emptyList())
+    /** The story the Headlines widget shows now, so full screen opens on it. */
+    val newsLead = mutableStateOf<Headline?>(null)
     val alerts = mutableStateOf<List<Alert>>(emptyList())
     val glance = mutableStateOf<LiveGlance?>(null)
     val radar = mutableStateOf<String?>(null)
@@ -174,7 +176,7 @@ class MainActivity : ComponentActivity() {
 
     private suspend fun refreshFeeds(c: LauncherConfig) = withContext(Dispatchers.IO) {
         agenda.value = if (c.calendars.isEmpty()) emptyList() else fetchCalendar(c.calendars)
-        news.value = if (c.newsFeeds.isEmpty()) emptyList() else fetchNews(c.newsFeeds, if (widgetOn("news")) 12 else 8)
+        news.value = if (c.newsFeeds.isEmpty()) emptyList() else fetchNews(c.newsFeeds, if (widgetOn("news")) 15 else 8)
         alerts.value = if (c.alerts && c.hasWeather) fetchAlerts(c.latitude, c.longitude) else emptyList()
         if (widgetOn("radio") && radioList.value.isEmpty()) withContext(Dispatchers.Main) { loadRadio(radioGenre.value) }
         if (widgetOn("weather")) { radarFrames.value = fetchRadarFrames(); radar.value = radarFrames.value.lastOrNull()?.first }

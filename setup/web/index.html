@@ -63,9 +63,10 @@
   <section id="home" class="step">
     <h1>Home screen</h1>
     <p class="lead">A plain launcher: clock, weather, your apps. You can add or move apps on the TV later (long-press a tile).</p>
-    <h3>Weather location</h3>
+    <h3>Your ZIP code</h3>
+    <p class="muted">Sets the weather, radar map, weather alerts and local news headlines for your area.</p>
     <div class="row">
-      <input id="loc-q" placeholder="ZIP code or city">
+      <input id="loc-q" placeholder="ZIP code (or a city name)">
       <button id="loc-search">Search</button>
       <button id="loc-clear" class="ghost">No weather</button>
     </div>
@@ -94,7 +95,7 @@
         <textarea data-key="calendars" rows="2" placeholder="https://calendar.google.com/calendar/ical/…/basic.ics"></textarea>
       </label>
       <label class="check"><input type="checkbox" data-key="newsWorld"> News strip: world headlines (BBC World, NPR)</label>
-      <label>Local news feeds <span class="muted">(optional RSS links, one per line, e.g. your local TV station's news RSS)</span>
+      <label>Local news feeds <span class="muted">(filled in from your ZIP code; add any other RSS links, one per line)</span>
         <textarea data-key="newsLocal" rows="2" placeholder="https://www.example-station.com/news/rss"></textarea>
       </label>
       <label class="check"><input type="checkbox" data-key="noAlerts"> Hide weather alerts <span class="muted">(US National Weather Service warnings for your location)</span></label>

@@ -46,6 +46,7 @@ func registerAPI(mux *http.ServeMux) {
 	})
 	mux.HandleFunc("POST /api/test-playlist", handleTestPlaylist)
 	mux.HandleFunc("GET /api/geocode", handleGeocode)
+	mux.HandleFunc("GET /api/localnews", handleLocalNews)
 	mux.HandleFunc("GET /api/teams", handleTeams)
 	mux.HandleFunc("GET /api/bloat", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, bloatList()) })
 	mux.HandleFunc("GET /api/adb", func(w http.ResponseWriter, r *http.Request) {
@@ -344,4 +345,49 @@ func handleTeams(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, out)
+}
+
+// handleLocalNews suggests local headline feeds for a spot: Google News searches for the town and its county.
+func handleLocalNews(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	town := strings.TrimSpace(strings.SplitN(q.Get("place"), ",", 2)[0])
+	var rev struct {
+		Address struct {
+			County, City, Town, Village, State string
+		} `json:"address"`
+	}
+	_ = getJSON(fmt.Sprintf("https://nominatim.openstreetmap.org/reverse?format=json&zoom=10&addressdetails=1&lat=%s&lon=%s",
+		url.QueryEscape(q.Get("lat")), url.QueryEscape(q.Get("lon"))), &rev)
+	a := rev.Address
+	if town == "" {
+		town = firstNonEmpty(a.City, a.Town, a.Village)
+	}
+	gnews := func(s string) string {
+		return "https://news.google.com/rss/search?q=" + url.QueryEscape(s+" when:3d") + "&hl=en-US&gl=US&ceid=US:en"
+	}
+	var feeds, areas []string
+	for _, p := range []string{town, a.County} {
+		if p == "" || contains(areas, p) {
+			continue
+		}
+		areas = append(areas, p)
+		if a.State != "" {
+			p += ", " + a.State
+		}
+		feeds = append(feeds, gnews(p))
+	}
+	if len(feeds) == 0 {
+		writeErr(w, errors.New("couldn't work out the area for local news"))
+		return
+	}
+	writeJSON(w, map[string]any{"feeds": feeds, "areas": areas})
+}
+
+func contains(list []string, s string) bool {
+	for _, x := range list {
+		if x == s {
+			return true
+		}
+	}
+	return false
 }

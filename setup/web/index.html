@@ -65,7 +65,10 @@
       <label><input type="checkbox" value="US|USA"> United States</label>
     </div>
     <div class="checks"><label><input type="checkbox" id="dc-hide-empty"> Leave out empty event slots <small>("NBA 12: NO EVENT"). Off is safer: providers rename these slots when a game is on, and a left-out slot only comes back at the next refresh.</small></label></div>
-    <label>Your local market <span class="muted">(city and/or station call letters, separated by |, e.g. Springfield|KYTV|KOLR)</span>
+    <label>Your ZIP code <span class="muted">(finds the local ABC, CBS, NBC, FOX, PBS and CW stations nearest you)</span></label>
+    <div class="row"><input id="dc-zip" data-key="lineupZip" placeholder="e.g. 90210" maxlength="5" style="max-width:9em"><button id="dc-find-locals">Find my local channels</button><span id="dc-locals-status" class="muted"></span></div>
+    <div id="dc-locals-list" class="muted"></div>
+    <label>Your local market <span class="muted">(filled in by the ZIP search; or type a city and/or call letters separated by |, e.g. Springfield|KYTV|KOLR)</span>
       <input id="dc-locals" data-key="lineupLocals" placeholder="Your city">
     </label>
     <div class="row"><button id="dc-preview">Preview</button><button id="dc-apply" class="primary">Build channel list</button><span id="dc-status" class="muted"></span></div>

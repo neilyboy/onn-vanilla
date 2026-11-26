@@ -12,6 +12,7 @@ import (
 type Setup struct {
 	LineupPrefix    string         `json:"lineupPrefix,omitempty"`
 	LineupLocals    string         `json:"lineupLocals,omitempty"`
+	LineupZip       string         `json:"lineupZip,omitempty"`
 	LineupCats      []string       `json:"lineupCats,omitempty"`
 	LineupExtra     []string       `json:"lineupExtra,omitempty"`
 	LineupAdd       []string       `json:"lineupAdd,omitempty"`

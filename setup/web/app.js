@@ -319,6 +319,17 @@ async function init() {
     return { user: $("#dc-user").value, pass: $("#dc-pass").value, prefix: $("#dc-prefix").value, locals: $("#dc-locals").value.trim(),
       cats: S.lineupCats, extra: S.lineupExtra, add: S.lineupAdd, hideEmpty: S.lineupHideEmpty };
   };
+  $("#dc-find-locals").onclick = async () => {
+    const st = $("#dc-locals-status"), zip = $("#dc-zip").value.trim();
+    if (!/^\d{5}$/.test(zip)) { st.textContent = "Type a 5-digit ZIP code."; return; }
+    st.textContent = "Looking through your providers' local channels…"; $("#dc-locals-list").textContent = "";
+    try {
+      const r = await api("/api/lineup/locals", { ...lineupBody(), zip });
+      $("#dc-locals").value = r.include; S.lineupLocals = r.include; S.lineupZip = zip; save();
+      st.textContent = `${r.stations.length} channels near ${r.place}. Press Preview to check, then Build channel list.`;
+      $("#dc-locals-list").innerHTML = r.stations.map(x => `${esc(x.name)} <small>${x.miles} mi</small>`).join("<br>");
+    } catch (e) { st.textContent = e.message; }
+  };
   const filterHidden = () => {
     const q = $("#dc-hidden-filter").value.trim().toLowerCase();
     $$("#dc-hidden-list label").forEach(l => l.classList.toggle("hidden", !!q && !l.textContent.toLowerCase().includes(q)));

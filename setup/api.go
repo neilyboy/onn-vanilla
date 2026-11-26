@@ -61,7 +61,7 @@ func registerAPI(mux *http.ServeMux) {
 		writeJSON(w, map[string]any{"path": p, "version": v, "apks": apkErr == nil, "dataDir": dataDir})
 	})
 	type lineupReq struct {
-		User, Pass string
+		User, Pass, Zip string
 		LineupOpts
 	}
 	lineupClient := func(r *http.Request) (*dcClient, lineupReq, error) {
@@ -117,6 +117,19 @@ func registerAPI(mux *http.ServeMux) {
 			}
 		}
 		writeJSON(w, map[string]any{"limits": limits, "groups": plan, "counts": counts, "total": total})
+	})
+	mux.HandleFunc("POST /api/lineup/locals", func(w http.ResponseWriter, r *http.Request) {
+		c, b, err := lineupClient(r)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		res, err := c.findLocals(b.Zip, b.Prefix)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		writeJSON(w, res)
 	})
 	mux.HandleFunc("POST /api/lineup/hidden", func(w http.ResponseWriter, r *http.Request) {
 		c, b, err := lineupClient(r)

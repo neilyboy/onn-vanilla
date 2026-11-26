@@ -206,6 +206,8 @@ class MainActivity : ComponentActivity() {
         reload(true)
     }
     private var pendingTune: String? = null
+    /** Wall-clock time a Rooms "start together" tune should begin playing (0 = right away). */
+    private var pendingStartAt = 0L
     private var pendingVod: String? = null
     val openSeries = mutableStateOf<VodItem?>(null)
 
@@ -279,6 +281,7 @@ class MainActivity : ComponentActivity() {
         i.getStringExtra("m3u_url")?.let { settings.m3uOverride = it; changed = true }
         i.getStringExtra("epg_url")?.let { settings.epgOverride = it; changed = true }
         pendingTune = i.getStringExtra("tune")
+        pendingStartAt = i.getStringExtra("start_in")?.toLongOrNull()?.let { System.currentTimeMillis() + it } ?: 0L
         i.getStringExtra("tab")?.let { openTab.value = it }
         i.getStringExtra("vod_id")?.let { pendingVod = it }
         i.getStringExtra("vod_key")?.let { key ->
@@ -355,6 +358,7 @@ class MainActivity : ComponentActivity() {
         val list = channels.value
         if (list.isEmpty()) return
         pendingTune = null
+        val startAt = pendingStartAt.also { pendingStartAt = 0L }
         lifecycleScope.launch {
             val ch = withContext(Dispatchers.Default) {
                 if (q.startsWith("game:")) {
@@ -365,11 +369,11 @@ class MainActivity : ComponentActivity() {
                     list.firstOrNull { it.name.equals(q, true) } ?: list.firstOrNull { it.name.contains(q, true) }
                 }
             }
-            if (ch != null) play(ch) else Toast.makeText(this@MainActivity, "No channel for \"$q\"", Toast.LENGTH_SHORT).show()
+            if (ch != null) play(ch, startAt) else Toast.makeText(this@MainActivity, "No channel for \"$q\"", Toast.LENGTH_SHORT).show()
         }
     }
 
-    fun play(ch: Channel) {
+    fun play(ch: Channel, startAt: Long = 0L) {
         settings.lastChannel = ch.url
         settings.pushRecent(profile.value.name, ch.name)
         startActivity(
@@ -378,6 +382,7 @@ class MainActivity : ComponentActivity() {
                 .putExtra("url", ch.url)
                 .putExtra("profile", profile.value.name)
                 .putExtra("kids", profile.value.kids)
+                .putExtra("start_at", startAt)
         )
     }
 

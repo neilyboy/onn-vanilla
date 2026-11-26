@@ -88,7 +88,19 @@ fun nudge(cells: List<Cell>, id: String, dx: Int, dy: Int, resize: Boolean): Lis
     val others = cells.filter { it.id != id }
     if (resize) {
         val n = c.copy(w = c.w + dx, h = c.h + dy)
-        return if (n.fits && n.w >= 2 && others.none { it.overlaps(n) }) others + n else cells
+        if (!n.fits || n.w < 2 || n.h < 1) return cells
+        // Growing into a neighbour shrinks that neighbour by the same step.
+        val pushed = others.map { o ->
+            when {
+                !o.overlaps(n) -> o
+                dx > 0 -> o.copy(x = o.x + 1, w = o.w - 1)
+                dy > 0 -> o.copy(y = o.y + 1, h = o.h - 1)
+                else -> o
+            }
+        }
+        val ok = pushed.all { it.w >= 2 && it.h >= 1 && !it.overlaps(n) } &&
+            pushed.indices.all { i -> pushed.indices.none { j -> j > i && pushed[i].overlaps(pushed[j]) } }
+        return if (ok) pushed + n else cells
     }
     val n = c.copy(x = c.x + dx, y = c.y + dy)
     if (!n.fits) return cells
@@ -120,4 +132,22 @@ fun periodNow(t: LocalTime = LocalTime.now()) = when (t.hour) {
     in 11..16 -> "day"
     in 17..21 -> "evening"
     else -> "night"
+}
+
+/** The widget next to [id] in direction dx/dy, for picking which widget to edit. */
+fun neighbour(cells: List<Cell>, id: String, dx: Int, dy: Int): String? {
+    val c = cells.firstOrNull { it.id == id } ?: return cells.firstOrNull()?.id
+    val cx = c.x * 2 + c.w; val cy = c.y * 2 + c.h
+    val others = cells.filter { it.id != id }
+    // Prefer widgets entirely past this one's edge; fall back to ones whose centre is further that way.
+    val past = others.filter { o -> when { dx > 0 -> o.x >= c.x + c.w; dx < 0 -> o.x + o.w <= c.x; dy > 0 -> o.y >= c.y + c.h; else -> o.y + o.h <= c.y } }
+    return past.ifEmpty {
+        others.filter { o ->
+            val ox = o.x * 2 + o.w; val oy = o.y * 2 + o.h
+            when { dx > 0 -> ox > cx; dx < 0 -> ox < cx; dy > 0 -> oy > cy; else -> oy < cy }
+        }
+    }.minByOrNull { o ->
+        val ox = o.x * 2 + o.w; val oy = o.y * 2 + o.h
+        if (dx != 0) kotlin.math.abs(ox - cx) + 2 * kotlin.math.abs(oy - cy) else kotlin.math.abs(oy - cy) + 2 * kotlin.math.abs(ox - cx)
+    }?.id
 }

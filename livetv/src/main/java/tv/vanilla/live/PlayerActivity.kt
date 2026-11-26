@@ -63,6 +63,8 @@ class PlayerActivity : ComponentActivity() {
     private val showList = mutableStateOf(false)
     private val kids by lazy { intent.getBooleanExtra("kids", false) }
     private val profileName by lazy { intent.getStringExtra("profile") ?: "" }
+    /** Rooms "start together": buffer now, start playing at this wall-clock time. Only the first tune waits. */
+    private var startAt = 0L
     private val error = mutableStateOf<String?>(null)
     private val typed = mutableStateOf("")
     private val commitTyped = Runnable {
@@ -120,6 +122,7 @@ class PlayerActivity : ComponentActivity() {
             }
         })
         // The lineup can refresh between picking a channel and opening the player, so find it by stream URL first.
+        startAt = intent.getLongExtra("start_at", 0L)
         val url = intent.getStringExtra("url")
         tune(url?.let { u -> Repo.channels.indexOfFirst { it.url == u }.takeIf { it >= 0 } } ?: intent.getIntExtra("index", 0))
 
@@ -146,7 +149,12 @@ class PlayerActivity : ComponentActivity() {
         Glance.writePlaying(this, list[target])
         player.setMediaItem(MediaItem.fromUri(list[target].url))
         player.prepare()
-        player.playWhenReady = true
+        val wait = startAt - System.currentTimeMillis()
+        startAt = 0L
+        if (wait in 1..15_000) {
+            player.playWhenReady = false
+            window.decorView.postDelayed({ player.playWhenReady = true }, wait)
+        } else player.playWhenReady = true
         overlayTick.intValue++
     }
 

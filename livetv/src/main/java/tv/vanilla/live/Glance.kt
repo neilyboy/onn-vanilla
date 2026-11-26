@@ -46,8 +46,22 @@ object Glance {
         }
         val cams = JSONArray()
         channels.filter { it.group.contains("camera", ignoreCase = true) }.take(12).forEach { cams.put(JSONObject().put("name", it.name).put("logo", it.logo)) }
+        // Rooms mini guide: favorites, then each group's channels with something on now.
+        val guide = JSONArray()
+        fun chan(c: Channel): JSONObject {
+            val p = epg[c.tvgId]?.firstOrNull { now in it.start until it.stop }
+            return JSONObject().put("name", c.name).put("number", c.number).put("logo", c.logo).put("title", p?.title ?: "")
+                .put("progress", p?.let { ((now - it.start).toDouble() / (it.stop - it.start)).coerceIn(0.0, 1.0) } ?: 0.0)
+        }
+        favorites.sorted().mapNotNull { byName[it] }.take(40).takeIf { it.isNotEmpty() }?.let { f ->
+            guide.put(JSONObject().put("name", "Favorites").put("chans", JSONArray().apply { f.forEach { put(chan(it)) } }))
+        }
+        channels.filter { !it.group.contains("camera", true) }.groupBy { it.group }.entries.take(30).forEach { (g, cs) ->
+            val on = cs.filter(airing).take(40)
+            if (on.isNotEmpty()) guide.put(JSONObject().put("name", g).put("chans", JSONArray().apply { on.forEach { put(chan(it)) } }))
+        }
         val old = runCatching { JSONObject(file(ctx).readText()) }.getOrNull()
-        val root = JSONObject().put("profile", profile).put("at", now).put("onNow", onNow).put("games", ga).put("resume", ra).put("cameras", cams)
+        val root = JSONObject().put("profile", profile).put("at", now).put("onNow", onNow).put("games", ga).put("resume", ra).put("cameras", cams).put("guide", guide)
             .put("newVod", old?.optJSONArray("newVod") ?: JSONArray()).put("newVodAt3", old?.optLong("newVodAt3") ?: 0L)
             .put("teams", old?.optJSONArray("teams") ?: JSONArray()).put("teamsAt", old?.optLong("teamsAt") ?: 0L)
         val tmp = File(ctx.filesDir, "glance.json.tmp")

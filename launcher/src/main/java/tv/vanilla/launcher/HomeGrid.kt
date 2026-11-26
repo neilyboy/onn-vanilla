@@ -116,7 +116,7 @@ fun WidgetFrame(
                     modifier = Modifier.weight(1f), maxLines = 1,
                 )
                 if (editing > 0) Text(
-                    if (editing == 2) "RESIZE" else "MOVE", color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                    when (editing) { 1 -> "SELECTED"; 2 -> "MOVE"; else -> "RESIZE" }, color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.clip(CircleShape).background(EDIT_COLOR).padding(horizontal = 8.dp, vertical = 2.dp),
                 )
             }
@@ -133,7 +133,7 @@ fun WidgetFrame(
 
 @Composable
 fun WidgetGrid(
-    a: MainActivity, cfg: LauncherConfig, theme: VanillaTheme, cells: List<Cell>, edit: Pair<String, Boolean>?,
+    a: MainActivity, cfg: LauncherConfig, theme: VanillaTheme, cells: List<Cell>, edit: Pair<String, Int>?,
     modifier: Modifier, onZoom: (String) -> Unit, onMenu: (String) -> Unit,
 ) {
     BoxWithConstraints(modifier) {
@@ -151,7 +151,7 @@ fun WidgetGrid(
                 val h by animateDpAsState(ch * c.h + gap * (c.h - 1), label = "h")
                 WidgetFrame(
                     c.id, a, cfg, theme, c.w >= 6, Modifier.offset(x, y).size(w, h),
-                    editing = if (edit?.first == c.id) (if (edit.second) 2 else 1) else 0,
+                    editing = if (edit?.first == c.id) edit.second + 1 else 0,
                     onZoom = { onZoom(c.id) }, onMenu = { onMenu(c.id) },
                 )
             }
@@ -208,11 +208,20 @@ fun AddWidgetDialog(on: List<String>, theme: VanillaTheme, onDone: (WidgetInfo?)
     }
 }
 
+const val EDIT_PICK = 0
+const val EDIT_MOVE = 1
+const val EDIT_RESIZE = 2
+
 @Composable
-fun EditBar(resize: Boolean, modifier: Modifier) {
+fun EditBar(mode: Int, name: String, modifier: Modifier) {
+    val (title, hint) = when (mode) {
+        EDIT_PICK -> "Pick a widget" to "◀ ▶ ▲ ▼ choose  ·  OK move it  ·  Back done"
+        EDIT_MOVE -> "Moving $name" to "◀ ▶ ▲ ▼ move  ·  OK resize  ·  hold OK pick another  ·  Back done"
+        else -> "Resizing $name" to "▶ ▼ grow  ◀ ▲ shrink  ·  OK pick another  ·  Back done"
+    }
     Row(modifier.clip(CircleShape).background(EDIT_COLOR).padding(horizontal = 26.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-        Text(if (resize) "Resizing" else "Moving", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        Text(if (resize) "◀ ▶ ▲ ▼ size  ·  OK move  ·  Back done" else "◀ ▶ ▲ ▼ move  ·  OK resize  ·  Back done", color = Color.Black.copy(alpha = 0.75f), fontSize = 16.sp)
+        Text(title, color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Text(hint, color = Color.Black.copy(alpha = 0.75f), fontSize = 16.sp)
     }
 }
 

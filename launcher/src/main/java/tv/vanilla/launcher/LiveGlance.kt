@@ -15,7 +15,9 @@ data class GVod(val id: String, val title: String, val poster: String, val serie
 data class GCam(val name: String, val logo: String)
 data class GResult(val opp: String, val oppLogo: String, val home: Boolean, val start: Long, val us: String, val them: String, val result: String, val network: String, val live: Boolean)
 data class GTeamSched(val league: String, val abbr: String, val name: String, val logo: String, val color: String, val recent: List<GResult>, val next: List<GResult>)
-data class LiveGlance(val profile: String, val onNow: List<GChan>, val games: List<GGame>, val resume: List<GResume>, val newVod: List<GVod>, val cameras: List<GCam> = emptyList(), val teams: List<GTeamSched> = emptyList())
+/** A guide group and what's on its channels now, for the Rooms mini guide. */
+data class GGroup(val name: String, val chans: List<GChan>)
+data class LiveGlance(val profile: String, val onNow: List<GChan>, val games: List<GGame>, val resume: List<GResume>, val newVod: List<GVod>, val cameras: List<GCam> = emptyList(), val teams: List<GTeamSched> = emptyList(), val guide: List<GGroup> = emptyList())
 
 private const val LIVE_PKG = "tv.vanilla.live"
 
@@ -41,15 +43,19 @@ fun readGlance(ctx: Context): LiveGlance? = runCatching {
             val res = { a: JSONArray? -> a.objs().map { GResult(it.optString("opp"), it.optString("oppLogo"), it.optBoolean("home"), it.optLong("start"), it.optString("us"), it.optString("them"), it.optString("result"), it.optString("network"), it.optBoolean("live")) } }
             GTeamSched(t.optString("league"), t.optString("abbr"), t.optString("name"), t.optString("logo"), t.optString("color"), res(t.optJSONArray("recent")), res(t.optJSONArray("next")))
         },
+        r.optJSONArray("guide").objs().map { g ->
+            GGroup(g.optString("name"), g.optJSONArray("chans").objs().map { GChan(it.optString("name"), it.optString("number"), it.optString("logo"), it.optString("title"), it.optDouble("progress", 0.0).toFloat()) })
+        },
     )
 }.getOrNull()
 
 /** Opens Live TV, optionally tuning a channel ("tune"), a game ("tune" = "game:<abbr>") or resuming a title ("vod_key"). */
-fun openLive(ctx: Context, extra: String? = null, value: String? = null) {
+fun openLive(ctx: Context, extra: String? = null, value: String? = null, startIn: Long = 0L) {
     val i = ctx.packageManager.getLaunchIntentForPackage(LIVE_PKG)
         ?: ctx.packageManager.getLeanbackLaunchIntentForPackage(LIVE_PKG) ?: return
     i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     // Bring Live TV's main screen forward (closing a player left open) so it receives the deep link.
     if (extra != null && value != null) i.putExtra(extra, value).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+    if (startIn > 0) i.putExtra("start_in", startIn.toString())
     runCatching { ctx.startActivity(i) }
 }

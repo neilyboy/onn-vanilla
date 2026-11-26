@@ -80,7 +80,9 @@ fun LauncherScreen(
     var editing by remember { mutableStateOf<AppEntry?>(null) }
     var zoom by remember { mutableStateOf<String?>(null) }
     var menuFor by remember { mutableStateOf<String?>(null) }
-    var edit by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+    /** Widget being edited and how: [EDIT_PICK], [EDIT_MOVE] or [EDIT_RESIZE]. */
+    var edit by remember { mutableStateOf<Pair<String, Int>?>(null) }
+    var longOk by remember { mutableStateOf(false) }
     var showAdd by remember { mutableStateOf(false) }
     val apps = activity.dock.value ?: cfg.apps
     val firstTile = remember { FocusRequester() }
@@ -117,11 +119,18 @@ fun LauncherScreen(
                         else -> null
                     }
                     if (step != null) {
-                        if (ev.type == KeyEventType.KeyDown) activity.setCells(nudge(activity.cells, e.first, step.first, step.second, e.second))
+                        if (ev.type == KeyEventType.KeyDown) {
+                            if (e.second == EDIT_PICK) neighbour(activity.cells, e.first, step.first, step.second)?.let { edit = it to EDIT_PICK }
+                            else activity.setCells(nudge(activity.cells, e.first, step.first, step.second, e.second == EDIT_RESIZE))
+                        }
                         return@onPreviewKeyEvent true
                     }
                     if (ev.key == Key.DirectionCenter || ev.key == Key.Enter || ev.key == Key.NumPadEnter) {
-                        if (ev.type == KeyEventType.KeyUp) edit = e.copy(second = !e.second)
+                        // Hold OK: pick another widget. Press OK: pick → move → resize → pick.
+                        if (ev.type == KeyEventType.KeyDown && ev.nativeKeyEvent.repeatCount == 1) { longOk = true; edit = e.first to EDIT_PICK }
+                        if (ev.type == KeyEventType.KeyUp) {
+                            if (longOk) longOk = false else edit = e.first to (e.second + 1) % 3
+                        }
                         return@onPreviewKeyEvent true
                     }
                     if (ev.key == Key.Back || ev.key == Key.Escape) {
@@ -167,11 +176,11 @@ fun LauncherScreen(
                 )
             }
         }
-        edit?.let { EditBar(it.second, Modifier.align(Alignment.TopCenter).padding(top = 28.dp)) }
+        edit?.let { EditBar(it.second, widgetName(it.first), Modifier.align(Alignment.TopCenter).padding(top = 28.dp)) }
 
         if (showSettings) HomeSettings(
             activity,
-            onEditLayout = { showSettings = false; activity.cells.firstOrNull()?.let { edit = it.id to false } },
+            onEditLayout = { showSettings = false; activity.cells.minWithOrNull(compareBy({ it.y }, { it.x }))?.let { edit = it.id to EDIT_PICK } },
             onAdvanced = { showSetup = true },
             onClose = { showSettings = false },
         )
@@ -181,7 +190,7 @@ fun LauncherScreen(
                 menuFor = null
                 when (action) {
                     "zoom" -> zoom = id
-                    "edit" -> edit = id to false
+                    "edit" -> edit = id to EDIT_MOVE
                     "remove" -> activity.setCells(activity.cells.filter { it.id != id })
                     "add" -> showAdd = true
                     "settings" -> showSettings = true
@@ -193,7 +202,7 @@ fun LauncherScreen(
             if (w != null) {
                 val next = placeNew(activity.cells, w)
                 if (next == null) android.widget.Toast.makeText(activity, "No room left. Remove a widget first.", android.widget.Toast.LENGTH_SHORT).show()
-                else { activity.setCells(next); edit = w.id to false }
+                else { activity.setCells(next); edit = w.id to EDIT_MOVE }
             }
         }
         if (showSetup) SetupDialog(activity, theme, onSettings) { showSetup = false }

@@ -13,7 +13,7 @@ import java.net.URLEncoder
 import kotlin.concurrent.thread
 
 /** Another Vanilla box on the network and what it's watching ("" = nothing in Live TV). */
-data class Peer(val name: String, val host: String, val port: Int, val playing: String = "", val logo: String = "")
+data class Peer(val name: String, val host: String, val port: Int, val playing: String = "", val logo: String = "", val service: String = name)
 
 private const val SERVICE = "_vanillahome._tcp."
 private const val PORT = 8766
@@ -28,11 +28,15 @@ fun readPlaying(ctx: Context): JSONObject? = runCatching {
 
 /**
  * Rooms: each box announces itself on the local network (mDNS) and answers two requests on port 8766:
- * `GET /now` (what it's watching) and `GET /tune?ch=<channel name>` (open that channel in Live TV).
+ * `GET /now` (its name and what it's watching) and `GET /tune?ch=<channel name>&in=<ms>` (open that channel in Live TV,
+ * starting playback `in` ms from now so several TVs can start together).
  */
 class Rooms(private val ctx: MainActivity) {
     val peers = mutableStateOf<List<Peer>>(emptyList())
-    val myName: String = runCatching { android.provider.Settings.Global.getString(ctx.contentResolver, "device_name") }.getOrNull()?.ifBlank { null } ?: Build.MODEL
+    /** Read fresh each time, so renaming the TV in Android settings shows up without a restart. */
+    val myName: String get() = runCatching { android.provider.Settings.Global.getString(ctx.contentResolver, "device_name") }.getOrNull()?.ifBlank { null } ?: Build.MODEL
+    private var announced: String? = null
+    private var regListener: NsdManager.RegistrationListener? = null
     private val nsd = ctx.getSystemService(Context.NSD_SERVICE) as NsdManager
     private var server: ServerSocket? = null
     private var registered: String? = null
@@ -44,10 +48,24 @@ class Rooms(private val ctx: MainActivity) {
         if (started) return
         started = true
         thread(isDaemon = true, name = "rooms") { serve() }
-        runCatching {
-            nsd.registerService(NsdServiceInfo().apply { serviceName = myName; serviceType = SERVICE; port = PORT }, NsdManager.PROTOCOL_DNS_SD, regListener)
-            nsd.discoverServices(SERVICE, NsdManager.PROTOCOL_DNS_SD, discListener)
+        announce()
+        runCatching { nsd.discoverServices(SERVICE, NsdManager.PROTOCOL_DNS_SD, discListener) }
+    }
+
+    /** (Re-)registers this box under its current name. */
+    private fun announce() {
+        val name = myName
+        if (name == announced) return
+        regListener?.let { l -> runCatching { nsd.unregisterService(l) } }
+        announced = name
+        val l = object : NsdManager.RegistrationListener {
+            override fun onServiceRegistered(info: NsdServiceInfo) { registered = info.serviceName }
+            override fun onRegistrationFailed(info: NsdServiceInfo, code: Int) = Unit
+            override fun onServiceUnregistered(info: NsdServiceInfo) = Unit
+            override fun onUnregistrationFailed(info: NsdServiceInfo, code: Int) = Unit
         }
+        regListener = l
+        runCatching { nsd.registerService(NsdServiceInfo().apply { serviceName = name; serviceType = SERVICE; port = PORT }, NsdManager.PROTOCOL_DNS_SD, l) }
     }
 
     private fun serve() = runCatching {
@@ -64,9 +82,11 @@ class Rooms(private val ctx: MainActivity) {
                             val p = readPlaying(ctx)
                             JSONObject().put("name", myName).put("playing", p?.optString("name") ?: "").put("logo", p?.optString("logo") ?: "").toString()
                         }
-                        path.startsWith("/tune?ch=") -> {
-                            val ch = URLDecoder.decode(path.substringAfter("ch="), "UTF-8")
-                            ctx.runOnUiThread { openLive(ctx, "tune", ch) }
+                        path.startsWith("/tune?") -> {
+                            val q = path.substringAfter('?').split('&').associate { kv -> kv.substringBefore('=') to URLDecoder.decode(kv.substringAfter('=', ""), "UTF-8") }
+                            val ch = q["ch"].orEmpty()
+                            val startIn = q["in"]?.toLongOrNull() ?: 0L
+                            if (ch.isNotBlank()) ctx.runOnUiThread { openLive(ctx, "tune", ch, startIn) }
                             """{"ok":true}"""
                         }
                         else -> """{"error":"not found"}"""
@@ -84,30 +104,27 @@ class Rooms(private val ctx: MainActivity) {
 
     /** Refreshes what each other box is watching. Call off the main thread. */
     fun poll() {
+        announce()
         peers.value = peers.value.map { p ->
             runCatching { JSONObject(httpGet("http://${p.host}:${p.port}/now", 3000)) }.getOrNull()
-                ?.let { p.copy(playing = it.optString("playing"), logo = it.optString("logo")) } ?: p
+                ?.let { p.copy(name = it.optString("name").ifBlank { p.name }, playing = it.optString("playing"), logo = it.optString("logo")) } ?: p
         }
     }
 
-    fun send(p: Peer, channel: String) = thread(isDaemon = true) {
-        runCatching { httpGet("http://${p.host}:${p.port}/tune?ch=" + URLEncoder.encode(channel, "UTF-8"), 4000) }
-    }
-
-    private val regListener = object : NsdManager.RegistrationListener {
-        override fun onServiceRegistered(info: NsdServiceInfo) { registered = info.serviceName }
-        override fun onRegistrationFailed(info: NsdServiceInfo, code: Int) = Unit
-        override fun onServiceUnregistered(info: NsdServiceInfo) = Unit
-        override fun onUnregistrationFailed(info: NsdServiceInfo, code: Int) = Unit
+    /** Tunes [channel] on each of [to] at once, all starting playback [startIn] ms from now. */
+    fun send(to: List<Peer>, channel: String, startIn: Long = 0L) = to.forEach { p ->
+        thread(isDaemon = true) {
+            runCatching { httpGet("http://${p.host}:${p.port}/tune?ch=" + URLEncoder.encode(channel, "UTF-8") + "&in=$startIn", 4000) }
+        }
     }
 
     private val discListener = object : NsdManager.DiscoveryListener {
         override fun onServiceFound(info: NsdServiceInfo) {
-            if (info.serviceName == (registered ?: myName)) return
+            if (info.serviceName == (registered ?: announced)) return
             synchronized(pending) { pending.addLast(info) }
             resolveNext()
         }
-        override fun onServiceLost(info: NsdServiceInfo) { peers.value = peers.value.filter { it.name != info.serviceName } }
+        override fun onServiceLost(info: NsdServiceInfo) { peers.value = peers.value.filter { it.service != info.serviceName } }
         override fun onDiscoveryStarted(type: String) = Unit
         override fun onDiscoveryStopped(type: String) = Unit
         override fun onStartDiscoveryFailed(type: String, code: Int) = Unit
@@ -122,7 +139,7 @@ class Rooms(private val ctx: MainActivity) {
             override fun onServiceResolved(info: NsdServiceInfo) {
                 val host = info.host?.hostAddress
                 if (host != null && info.serviceName != registered) {
-                    peers.value = peers.value.filter { it.name != info.serviceName } + Peer(info.serviceName, host, info.port)
+                    peers.value = peers.value.filter { it.service != info.serviceName && it.host != host } + Peer(info.serviceName, host, info.port)
                 }
                 synchronized(pending) { resolving = false }; resolveNext()
             }

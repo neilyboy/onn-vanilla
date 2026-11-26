@@ -31,7 +31,14 @@ fun readPlaying(ctx: Context): JSONObject? = runCatching {
  * `GET /now` (its name and what it's watching) and `GET /tune?ch=<channel name>&in=<ms>` (open that channel in Live TV,
  * starting playback `in` ms from now so several TVs can start together).
  */
-class Rooms(private val ctx: MainActivity) {
+class Rooms private constructor(private val ctx: Context) {
+    companion object {
+        @Volatile private var instance: Rooms? = null
+        /** One per process, so the always-on Home button service can answer other TVs even while Home isn't showing. */
+        fun get(ctx: Context): Rooms = instance ?: synchronized(this) { instance ?: Rooms(ctx.applicationContext).also { instance = it } }
+    }
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+
     val peers = mutableStateOf<List<Peer>>(emptyList())
     /** Read fresh each time, so renaming the TV in Android settings shows up without a restart. */
     val myName: String get() = runCatching { android.provider.Settings.Global.getString(ctx.contentResolver, "device_name") }.getOrNull()?.ifBlank { null } ?: Build.MODEL
@@ -44,6 +51,7 @@ class Rooms(private val ctx: MainActivity) {
     private var resolving = false
     private var started = false
 
+    @Synchronized
     fun start() {
         if (started) return
         started = true
@@ -86,7 +94,7 @@ class Rooms(private val ctx: MainActivity) {
                             val q = path.substringAfter('?').split('&').associate { kv -> kv.substringBefore('=') to URLDecoder.decode(kv.substringAfter('=', ""), "UTF-8") }
                             val ch = q["ch"].orEmpty()
                             val startIn = q["in"]?.toLongOrNull() ?: 0L
-                            if (ch.isNotBlank()) ctx.runOnUiThread { openLive(ctx, "tune", ch, startIn) }
+                            if (ch.isNotBlank()) main.post { openLive(ctx, "tune", ch, startIn) }
                             """{"ok":true}"""
                         }
                         else -> """{"error":"not found"}"""

@@ -45,7 +45,7 @@ class MainActivity : ComponentActivity() {
     private val localCells = mutableStateOf<List<Cell>?>(null)
     private val slotCells = mutableStateOf<Map<String, List<Cell>>>(emptyMap())
     val period = mutableStateOf(periodNow())
-    val rooms by lazy { Rooms(this) }
+    val rooms by lazy { Rooms.get(this) }
     val radioOn = mutableStateOf<Station?>(null)
     val radioPlaying = mutableStateOf(false)
     val radioList = mutableStateOf<List<Station>>(emptyList())
@@ -80,7 +80,8 @@ class MainActivity : ComponentActivity() {
 
     private suspend fun roomsLoop() {
         while (true) {
-            if (widgetOn("rooms")) { rooms.start(); withContext(Dispatchers.IO) { rooms.poll() } }
+            rooms.start()
+            if (widgetOn("rooms")) withContext(Dispatchers.IO) { rooms.poll() }
             delay(if (idle.value) 60_000L else 15_000L)
         }
     }

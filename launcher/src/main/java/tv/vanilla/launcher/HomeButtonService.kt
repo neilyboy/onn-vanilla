@@ -36,7 +36,7 @@ class HomeButtonService : AccessibilityService() {
 
     override fun onInterrupt() {}
 
-    override fun onServiceConnected() { connected = true }
+    override fun onServiceConnected() { connected = true; Rooms.get(this).start() }
 
     override fun onDestroy() { connected = false; super.onDestroy() }
 

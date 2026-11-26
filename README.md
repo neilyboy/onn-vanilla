@@ -108,11 +108,11 @@ This installs Docker if needed, starts Dispatcharr on port 9191, asks for your l
 
 1. Open `http://<server>:9191` and create your admin login.
 2. **M3U & EPG Manager → Add M3U → Xtream Codes**, once per provider (server URL, username, password). Wait for each to finish loading.
-3. Build the channel list: `./refresh-lineup.sh` (or **Build my channel list** in the setup app).
+3. Build the channel list: install the [Lineup Manager plugin](https://github.com/neilyboy/dispatcharr-lineup-manager) (Dispatcharr → Plugins → Import), press **Build lineup**, then **Turn on schedule**. Without the plugin, `./refresh-lineup.sh` does the same from the command line.
 
 ### 2. Your channel list
 
-Providers list the same channel many times (once per provider, plus HD/FHD/backup copies) and mix in event slots and foreign groups. The lineup builder ([`server/dispatcharr/curate.py`](server/dispatcharr/curate.py)) turns that into one tidy guide:
+Providers list the same channel many times (once per provider, plus HD/FHD/backup copies) and mix in event slots and foreign groups. The [Lineup Manager plugin](https://github.com/neilyboy/dispatcharr-lineup-manager) (or the same rules in [`server/dispatcharr/curate.py`](server/dispatcharr/curate.py) for the command line) turns that into one tidy guide:
 
 - **Merges duplicates** of linear channels (ESPN, CNN, locals…) across providers by guide ID or name. Each merged channel keeps every copy as a backup, best provider first. If a provider is down or at its limit, Dispatcharr switches to the next.
 - **Reads each provider's real stream limit** from its Xtream account and sets it in Dispatcharr.
@@ -123,7 +123,7 @@ Your choices live in `~/.config/onn-vanilla/lineup.json` (copied from [`lineup.f
 
 **When you add or change a provider:** add it in Dispatcharr, let it load, then run `./refresh-lineup.sh` or wait for the nightly run. New channels are merged in, dead ones are removed, and channel numbers stay put. Use `./refresh-lineup.sh --dry-run` to preview changes.
 
-**Other countries and what's hidden:** only your country's channels are kept (`"countries": "US|USA"` in the lineup file). In the wizard, tick **Also include another country** to get, say, the UK's sports, sports events and TV as their own groups, including their 4K sports feeds. 4K/UHD channels get their own **4K** group. Empty event slots (`NBA 12: NO EVENT`) are kept by default, because providers rename them when a game is on; set `"drop_empty_events": true` (wizard: **Leave out empty event slots**) to drop them. To see everything left out, open **What's left out** in the wizard's lineup step and tick any group to add it, or run `./refresh-lineup.sh --hidden` on the server. Adding or dropping a provider needs nothing else: the same rules apply to the new provider's groups at the next refresh.
+**Other countries and what's hidden:** only your country's channels are kept (`"countries": "US|USA"` in the lineup file). Add another country (the plugin's **Countries to keep**, e.g. `US|USA|UK|GB`) to get, say, the UK's sports, sports events and TV as their own groups, including their 4K sports feeds. 4K/UHD channels get their own **4K** group. Empty event slots (`NBA 12: NO EVENT`) are kept by default, because providers rename them when a game is on; set `"drop_empty_events": true` to drop them. To see everything left out, use the plugin's **What's left out** and paste any group into **Add back**, or run `./refresh-lineup.sh --hidden` on the server. Adding or dropping a provider needs nothing else: the same rules apply to the new provider's groups at the next refresh.
 
 **Cameras and other custom streams** (RTSP/RTSPS cameras, HLS links): in Dispatcharr, add a custom stream, put it in a group named **Cameras**, and choose the **ffmpeg** stream profile. The next refresh adds it to the guide.
 

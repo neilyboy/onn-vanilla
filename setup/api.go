@@ -9,8 +9,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -61,7 +59,7 @@ func registerAPI(mux *http.ServeMux) {
 		writeJSON(w, map[string]any{"path": p, "version": v, "apks": apkErr == nil, "dataDir": dataDir})
 	})
 	type lineupReq struct {
-		User, Pass, Zip string
+		User, Pass string
 		LineupOpts
 	}
 	lineupClient := func(r *http.Request) (*dcClient, lineupReq, error) {
@@ -88,95 +86,6 @@ func registerAPI(mux *http.ServeMux) {
 			return
 		}
 		writeJSON(w, map[string]any{"ok": true, "user": s.XcUser})
-	})
-	mux.HandleFunc("GET /api/lineup/groups", func(w http.ResponseWriter, r *http.Request) {
-		var names []string
-		for _, g := range preset().Groups {
-			names = append(names, g.Name)
-		}
-		writeJSON(w, names)
-	})
-	mux.HandleFunc("POST /api/lineup/preview", func(w http.ResponseWriter, r *http.Request) {
-		c, b, err := lineupClient(r)
-		if err != nil {
-			writeErr(w, err)
-			return
-		}
-		limits, _ := c.syncLimits(false)
-		plan, _, err := c.plan(presetLineup(b.LineupOpts))
-		if err != nil {
-			writeErr(w, err)
-			return
-		}
-		total, counts := 0, map[string]int{}
-		for i := range plan {
-			counts[plan[i].Name] = len(plan[i].Channels)
-			total += len(plan[i].Channels)
-			if len(plan[i].Channels) > 40 {
-				plan[i].Channels = plan[i].Channels[:40]
-			}
-		}
-		writeJSON(w, map[string]any{"limits": limits, "groups": plan, "counts": counts, "total": total})
-	})
-	mux.HandleFunc("POST /api/lineup/locals", func(w http.ResponseWriter, r *http.Request) {
-		c, b, err := lineupClient(r)
-		if err != nil {
-			writeErr(w, err)
-			return
-		}
-		res, err := c.findLocals(b.Zip, b.Prefix)
-		if err != nil {
-			writeErr(w, err)
-			return
-		}
-		writeJSON(w, res)
-	})
-	mux.HandleFunc("POST /api/lineup/hidden", func(w http.ResponseWriter, r *http.Request) {
-		c, b, err := lineupClient(r)
-		if err != nil {
-			writeErr(w, err)
-			return
-		}
-		b.Add = nil // list hand-picked groups too, so they can be unticked
-		h, err := c.hidden(presetLineup(b.LineupOpts))
-		if err != nil {
-			writeErr(w, err)
-			return
-		}
-		writeJSON(w, h)
-	})
-	mux.HandleFunc("POST /api/lineup/apply", func(w http.ResponseWriter, r *http.Request) {
-		c, b, err := lineupClient(r)
-		stream(w, func(log logger) error {
-			if err != nil {
-				return err
-			}
-			log("==> Checking each provider's stream limit")
-			limits, _ := c.syncLimits(true)
-			for _, l := range limits {
-				switch {
-				case l.Updated:
-					log("  %s: now %d streams (from provider)", l.Name, l.Current)
-				case l.Provider > 0:
-					log("  %s: %d streams", l.Name, l.Current)
-				default:
-					log("  %s: %d streams (provider didn't report a limit; set it in Dispatcharr)", l.Name, l.Current)
-				}
-			}
-			log("==> Merging channels across providers")
-			l := presetLineup(b.LineupOpts)
-			plan, _, err := c.plan(l)
-			if err != nil {
-				return err
-			}
-			if err := c.apply(plan, log); err != nil {
-				return err
-			}
-			if data, err := json.MarshalIndent(l, "", " "); err == nil && os.WriteFile(filepath.Join(dataDir, "lineup.json"), data, 0o644) == nil {
-				log("Saved these choices to %s for the nightly refresh-lineup.sh.", filepath.Join(dataDir, "lineup.json"))
-			}
-			return nil
-		})
 	})
 	mux.HandleFunc("POST /api/box/pair", func(w http.ResponseWriter, r *http.Request) {
 		var b struct{ Pair, Code string }

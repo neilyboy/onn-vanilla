@@ -305,51 +305,6 @@ async function init() {
   $("#team-league").onchange = renderTeams;
   $("#team-filter").oninput = renderTeams;
   $("#inspect").onclick = inspect;
-  fetch("/api/lineup/groups").then(r => r.json()).then(names => {
-    $("#dc-cats").innerHTML = names.map(n => `<label><input type="checkbox" value="${esc(n)}" ${!S.lineupCats || !S.lineupCats.length || S.lineupCats.includes(n) ? "checked" : ""}> ${esc(n)}</label>`).join("");
-  });
-  $$("#dc-extra input").forEach(i => i.checked = (S.lineupExtra || []).includes(i.value));
-  $("#dc-hide-empty").checked = !!S.lineupHideEmpty;
-  const lineupBody = () => {
-    S.lineupCats = $$("#dc-cats input:checked").map(i => i.value);
-    S.lineupExtra = $$("#dc-extra input:checked").map(i => i.value);
-    S.lineupHideEmpty = $("#dc-hide-empty").checked;
-    S.lineupAdd = S.lineupAdd || [];
-    save();
-    return { user: $("#dc-user").value, pass: $("#dc-pass").value, prefix: $("#dc-prefix").value, locals: $("#dc-locals").value.trim(),
-      cats: S.lineupCats, extra: S.lineupExtra, add: S.lineupAdd, hideEmpty: S.lineupHideEmpty };
-  };
-  $("#dc-find-locals").onclick = async () => {
-    const st = $("#dc-locals-status"), zip = $("#dc-zip").value.trim();
-    if (!/^\d{5}$/.test(zip)) { st.textContent = "Type a 5-digit ZIP code."; return; }
-    st.textContent = "Looking through your providers' local channels…"; $("#dc-locals-list").textContent = "";
-    try {
-      const r = await api("/api/lineup/locals", { ...lineupBody(), zip });
-      $("#dc-locals").value = r.include; S.lineupLocals = r.include; S.lineupZip = zip; save();
-      st.textContent = `${r.stations.length} channels near ${r.place}. Press Preview to check, then Build channel list.`;
-      $("#dc-locals-list").innerHTML = r.stations.map(x => `${esc(x.name)} <small>${x.miles} mi</small>`).join("<br>");
-    } catch (e) { st.textContent = e.message; }
-  };
-  const filterHidden = () => {
-    const q = $("#dc-hidden-filter").value.trim().toLowerCase();
-    $$("#dc-hidden-list label").forEach(l => l.classList.toggle("hidden", !!q && !l.textContent.toLowerCase().includes(q)));
-  };
-  $("#dc-hidden-filter").oninput = filterHidden;
-  $("#dc-hidden").onclick = async () => {
-    const st = $("#dc-hidden-status"); st.textContent = "Reading your providers…";
-    try {
-      const rows = await api("/api/lineup/hidden", lineupBody());
-      const add = new Set(S.lineupAdd);
-      rows.sort((a, b) => add.has(b.name) - add.has(a.name));
-      $("#dc-hidden-list").innerHTML = rows.map(h => `<label><input type="checkbox" value="${esc(h.name)}" ${add.has(h.name) ? "checked" : ""}> ${esc(h.name)} <small>${h.streams} · ${esc(h.reason)}</small></label>`).join("");
-      $$("#dc-hidden-list input").forEach(i => i.onchange = () => {
-        S.lineupAdd = (S.lineupAdd || []).filter(n => n !== i.value).concat(i.checked ? [i.value] : []); save();
-        st.textContent = `${S.lineupAdd.length} ticked`;
-      });
-      st.textContent = `${rows.length} groups, ${rows.reduce((n, h) => n + h.streams, 0)} streams left out` + (S.lineupAdd.length ? `, ${S.lineupAdd.length} ticked` : "");
-      filterHidden();
-    } catch (e) { st.textContent = "✗ " + e.message; }
-  };
   $("#vod-status").textContent = S.xcUser ? "✓ On (sent to the box with your settings)" : "";
   $("#vod-enable").onclick = async () => {
     const st = $("#vod-status"); st.textContent = "Setting up…";
@@ -358,27 +313,6 @@ async function init() {
       S = await api("/api/setup");
       st.textContent = "✓ On. Click \"Only send settings\" on the box step to update your TVs.";
     } catch (e) { st.textContent = "✗ " + e.message; }
-  };
-  $("#dc-preview").onclick = async () => {
-    const st = $("#dc-status"), out = $("#dc-result"); st.textContent = "Reading your providers… (can take a minute)"; out.classList.add("hidden");
-    try {
-      await api("/api/setup", S);
-      const r = await api("/api/lineup/preview", lineupBody());
-      st.textContent = `${r.total} channels`;
-      const lim = (r.limits || []).map(l => `<li>${esc(l.name)}: ${l.provider ? l.provider + " streams" : "limit unknown"}${l.provider && l.provider !== l.current ? ` <span class="muted">(Dispatcharr has ${l.current}; Build fixes it)</span>` : ""}</li>`).join("");
-      out.innerHTML = (lim ? `<h4>Stream limits</h4><ul>${lim}</ul>` : "") + r.groups.map(g => `<h4>${esc(g.name)} — ${r.counts[g.name]} channels</h4>
-        <div class="muted small">From: ${g.sources.map(esc).join(", ") || "no matching groups"}</div>
-        <div class="chips">${g.channels.map(c => `<span class="chip">${esc(c.name)}${c.streams > 1 ? ` <small>×${c.streams}</small>` : ""}</span>`).join("")}${r.counts[g.name] > g.channels.length ? `<span class="muted">…and ${r.counts[g.name] - g.channels.length} more</span>` : ""}</div>`).join("");
-      out.classList.remove("hidden");
-    } catch (e) { st.textContent = "✗ " + e.message; }
-  };
-  $("#dc-apply").onclick = async () => {
-    if (!confirm("Build the channel list in Dispatcharr? Channels in these groups are replaced; nothing else is touched.")) return;
-    const log = $("#dc-log"); log.classList.remove("hidden"); log.textContent = "";
-    await api("/api/setup", S);
-    const r = await fetch("/api/lineup/apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(lineupBody()) });
-    const rd = r.body.getReader(), dec = new TextDecoder();
-    for (;;) { const { value, done } = await rd.read(); if (done) break; log.textContent += dec.decode(value, { stream: true }); log.scrollTop = log.scrollHeight; }
   };
   $$("#adb-mode .tab").forEach(t => t.onclick = () => {
     $$("#adb-mode .tab").forEach(x => x.classList.toggle("active", x === t));

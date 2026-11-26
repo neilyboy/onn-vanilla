@@ -6,7 +6,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /** A Home Assistant entity as shown on the home screen. */
-data class HaEntity(val id: String, val name: String, val state: String, val unit: String) {
+data class HaEntity(val id: String, val name: String, val state: String, val unit: String, val deviceClass: String = "") {
     val domain get() = id.substringBefore('.')
     val toggleable get() = domain in setOf("light", "switch", "fan", "input_boolean", "lock", "cover", "script", "scene", "automation")
     val on get() = state in setOf("on", "open", "unlocked", "playing", "home")
@@ -21,16 +21,29 @@ private fun haCall(base: String, token: String, path: String, body: String? = nu
     return c.inputStream.use { it.readBytes().decodeToString() }
 }
 
-fun fetchHa(cfg: LauncherConfig): List<HaEntity> {
-    if (cfg.haUrl.isBlank() || cfg.haToken.isBlank() || cfg.haEntities.isEmpty()) return emptyList()
-    val all = runCatching { JSONArray(haCall(cfg.haUrl, cfg.haToken, "/api/states")) }.getOrNull() ?: return emptyList()
-    val byId = (0 until all.length()).mapNotNull { all.optJSONObject(it) }.associateBy { it.optString("entity_id") }
-    return cfg.haEntities.flatMap { it.split(',', ' ') }.map { it.trim() }.filter { it.isNotEmpty() }.mapNotNull { id ->
-        byId[id]?.let { o ->
-            val a = o.optJSONObject("attributes") ?: JSONObject()
-            HaEntity(id, a.optString("friendly_name", id), o.optString("state"), a.optString("unit_of_measurement", ""))
-        }
+private val PICKABLE = setOf("light", "switch", "fan", "lock", "cover", "climate", "input_boolean", "camera", "scene", "script", "media_player", "sensor", "binary_sensor", "vacuum")
+private val AUTO = setOf("light", "switch", "fan", "lock", "cover", "climate", "input_boolean", "camera")
+private val NOISE = Regex("""^sensor\.(sun|backup)_|_led$|_cloud_connection$""")
+
+/** Every Home Assistant entity worth showing on a TV, so new devices appear without touching the setup app. */
+fun fetchHaAll(cfg: LauncherConfig): List<HaEntity>? {
+    if (cfg.haUrl.isBlank() || cfg.haToken.isBlank()) return emptyList()
+    val all = runCatching { JSONArray(haCall(cfg.haUrl, cfg.haToken, "/api/states")) }.getOrNull() ?: return null
+    return (0 until all.length()).mapNotNull { all.optJSONObject(it) }.mapNotNull { o ->
+        val id = o.optString("entity_id")
+        if (id.substringBefore('.') !in PICKABLE || NOISE.containsMatchIn(id)) return@mapNotNull null
+        val a = o.optJSONObject("attributes") ?: JSONObject()
+        HaEntity(id, a.optString("friendly_name", id), o.optString("state"), a.optString("unit_of_measurement", ""), a.optString("device_class", ""))
     }
+}
+
+/** What Home shows: the setup app's picks, then every light/switch/lock/etc. (new ones included), minus what was hidden on the TV. */
+fun haShown(cfg: LauncherConfig, all: List<HaEntity>, hidden: Set<String>, added: Set<String>): List<HaEntity> {
+    val picked = cfg.haEntities.flatMap { it.split(',', ' ') }.map { it.trim() }.filter { it.isNotEmpty() }
+    val byId = all.associateBy { it.id }
+    val first = picked.mapNotNull { byId[it] }
+    val rest = all.filter { it.id !in picked && (it.id in added || it.domain in AUTO) }.sortedBy { it.name.lowercase() }
+    return (first + rest).filter { it.id !in hidden }
 }
 
 /** Toggles lights/switches, locks or unlocks locks, opens or closes covers, runs scripts and scenes. */

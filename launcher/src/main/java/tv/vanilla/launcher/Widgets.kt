@@ -7,6 +7,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Videocam
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -50,7 +53,7 @@ fun widgetEmpty(id: String, a: MainActivity): Boolean {
     val g = a.glance.value
     return when (id) {
         "onnow" -> g?.onNow.isNullOrEmpty()
-        "scores" -> g?.games.isNullOrEmpty()
+        "scores" -> g?.games.isNullOrEmpty() && g?.teams.isNullOrEmpty()
         "resume" -> g?.resume.isNullOrEmpty()
         "newvod" -> g?.newVod.isNullOrEmpty()
         "news" -> a.news.value.isEmpty()
@@ -76,14 +79,14 @@ fun Widget(id: String, activity: MainActivity, cfg: LauncherConfig, theme: Vanil
     val g = activity.glance.value
     when (id) {
         "onnow" -> g?.onNow?.takeIf { it.isNotEmpty() }?.let { OnNow(it, theme) }
-        "scores" -> g?.games?.takeIf { it.isNotEmpty() }?.let { Scores(it, theme) }
+        "scores" -> g?.takeIf { it.games.isNotEmpty() || it.teams.isNotEmpty() }?.let { Sports(it, theme, wide) }
         "resume" -> g?.resume?.takeIf { it.isNotEmpty() }?.let { Posters("Continue watching", it.map { r -> Triple(r.title, r.poster, r.progress) }, theme) { i -> openLive(activity, "vod_key", it[i].key) } }
         "newvod" -> g?.newVod?.takeIf { it.isNotEmpty() }?.let { Posters("New on Movies & Series", it.map { v -> Triple(v.title, v.poster, -1f) }, theme) { i -> openLive(activity, "vod_id", (if (it[i].series) "s:" else "m:") + it[i].id) } }
         "calendar" -> Week(activity.agenda.value, cfg.countdowns, theme, wide)
         "news" -> NewsCards(activity.news.value, theme, wide)
         "ha" -> activity.ha.value.filter { it.domain != "camera" }.takeIf { it.isNotEmpty() }?.let { HomePanel(it, activity, theme) }
         "cameras" -> Cameras(activity.ha.value.filter { it.domain == "camera" }, g?.cameras.orEmpty(), activity, cfg, theme)
-        "weather" -> activity.weather.value?.let { HourlyRadar(it, activity.radar.value, cfg, theme, wide) }
+        "weather" -> activity.weather.value?.let { HourlyRadar(it, activity.radar.value, activity.radarFrames.value, cfg, theme, wide) }
         "radio" -> RadioWidget(activity, theme)
         "rooms" -> RoomsWidget(activity, theme)
     }
@@ -152,11 +155,11 @@ private fun OnNow(list: List<GChan>, theme: VanillaTheme) {
 internal fun teamColor(hex: String, fallback: Color) = runCatching { Color(android.graphics.Color.parseColor("#" + hex.removePrefix("#"))) }.getOrDefault(fallback)
 
 @Composable
-private fun Scores(list: List<GGame>, theme: VanillaTheme) {
+private fun Scores(list: List<GGame>, theme: VanillaTheme, title: String = "Scores") {
     val ctx = LocalContext.current
     val time = remember { DateTimeFormatter.ofPattern("EEE h:mm a") }
     Column {
-        Title("Scores", theme)
+        Title(title, theme)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(4.dp)) {
             items(list, key = { it.id }) { g ->
                 Card(theme, 200.dp, 74.dp, onClick = { openLive(ctx, "tune", "game:" + g.home.abbr) }) {
@@ -289,7 +292,7 @@ private fun NewsCards(items: List<Headline>, theme: VanillaTheme, wide: Boolean)
 }
 
 @Composable
-private fun HourlyRadar(w: Weather, radar: String?, cfg: LauncherConfig, theme: VanillaTheme, wide: Boolean) {
+private fun HourlyRadar(w: Weather, radar: String?, frames: List<String>, cfg: LauncherConfig, theme: VanillaTheme, wide: Boolean) {
     val hourFmt = remember { DateTimeFormatter.ofPattern("ha") }
     Panel(theme) {
         Title("Next 12 hours", theme)
@@ -305,7 +308,7 @@ private fun HourlyRadar(w: Weather, radar: String?, cfg: LauncherConfig, theme: 
         }
         if (radar != null && cfg.hasWeather) {
             Spacer(Modifier.height(10.dp))
-            Radar(cfg.latitude, cfg.longitude, radar, if (LocalZoom.current) 520.dp else if (wide) 220.dp else 150.dp)
+            Radar(cfg.latitude, cfg.longitude, radar, if (LocalZoom.current) 520.dp else if (wide) 220.dp else 150.dp, if (LocalZoom.current) frames else emptyList())
             Text("Radar: RainViewer · Map: Esri", color = theme.subText.copy(alpha = 0.6f), fontSize = 8.sp, modifier = Modifier.padding(top = 4.dp))
         }
     }
@@ -313,9 +316,15 @@ private fun HourlyRadar(w: Weather, radar: String?, cfg: LauncherConfig, theme: 
 
 private const val ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas"
 
-/** A 3x3 map of zoom-7 tiles with the RainViewer radar on top, centered on the home location. */
+/** A 3x3 map of zoom-7 tiles with the RainViewer radar on top, centered on the home location. Loops [frames] when given. */
 @Composable
-private fun Radar(lat: Double, lon: Double, radarBase: String, height: Dp) {
+private fun Radar(lat: Double, lon: Double, radarBase: String, height: Dp, frames: List<String> = emptyList()) {
+    val loop = frames.size > 1
+    var frame by remember(frames) { mutableIntStateOf(frames.lastIndex.coerceAtLeast(0)) }
+    if (loop) LaunchedEffect(frames) {
+        while (true) { delay(if (frame == frames.lastIndex) 1800 else 550); frame = (frame + 1) % frames.size }
+    }
+    val layers = if (loop) frames else listOf(radarBase)
     val z = 7
     val n = 1 shl z
     val fx = (lon + 180) / 360 * n
@@ -330,11 +339,22 @@ private fun Radar(lat: Double, lon: Double, radarBase: String, height: Dp) {
                 val x = ((tx + dx) % n + n) % n; val y = ty + dy
                 val m = Modifier.offset(tile * (dx + 1), tile * (dy + 1)).size(tile)
                 AsyncImage("$ESRI/World_Dark_Gray_Base/MapServer/tile/$z/$y/$x", null, modifier = m)
-                AsyncImage("$radarBase/256/$z/$x/$y/2/1_1.png", null, modifier = m.graphicsLayer { alpha = 0.85f })
+                // Every frame stays composed (only the current one visible) so the loop doesn't flash while tiles load.
+                layers.forEachIndexed { i, base ->
+                    AsyncImage("$base/256/$z/$x/$y/2/1_1.png", null, modifier = m.graphicsLayer { alpha = if (!loop || i == frame) 0.85f else 0f })
+                }
                 AsyncImage("$ESRI/World_Dark_Gray_Reference/MapServer/tile/$z/$y/$x", null, modifier = m)
             }
         }
         Box(Modifier.align(Alignment.Center).size(8.dp).clip(CircleShape).background(Color.White))
+        if (loop) {
+            val t = frames[frame].substringAfterLast('/').toLongOrNull()?.let { java.time.Instant.ofEpochSecond(it).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("h:mm a")) } ?: ""
+            Text(t, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.TopEnd).padding(10.dp).clip(RoundedCornerShape(8.dp)).background(Color(0x99000000)).padding(horizontal = 8.dp, vertical = 3.dp))
+            Row(Modifier.align(Alignment.BottomCenter).padding(10.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                frames.indices.forEach { i -> Box(Modifier.size(if (i == frame) 14.dp else 6.dp, 4.dp).clip(CircleShape).background(Color.White.copy(alpha = if (i == frame) 0.95f else 0.4f))) }
+            }
+        }
     }
 }
 
@@ -346,12 +366,16 @@ private fun HomePanel(list: List<HaEntity>, activity: MainActivity, theme: Vanil
             list.forEach { e ->
                 val value = if (e.unit.isNotBlank()) "${e.state.toDoubleOrNull()?.let { if (it % 1.0 == 0.0) it.toInt().toString() else "%.1f".format(it) } ?: e.state}${e.unit}" else e.state.replace('_', ' ')
                 val body: @Composable BoxScope.() -> Unit = {
-                    Row(Modifier.fillMaxSize().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        if (e.toggleable) Box(Modifier.size(8.dp).clip(CircleShape).background(if (e.on) theme.accent else theme.subText.copy(alpha = 0.4f)))
-                        if (e.toggleable) Spacer(Modifier.width(8.dp))
+                    val offline = e.state == "unavailable"
+                    val lit = e.on && !offline
+                    Row(Modifier.fillMaxSize().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(32.dp).clip(CircleShape).background(if (lit) theme.accent.copy(alpha = 0.22f) else theme.text.copy(alpha = 0.05f)), contentAlignment = Alignment.Center) {
+                            Icon(haIcon(e, lit), null, tint = if (lit) theme.accent else theme.subText.copy(alpha = if (offline) 0.25f else 0.55f), modifier = Modifier.size(18.dp))
+                        }
+                        Spacer(Modifier.width(8.dp))
                         Column {
-                            Text(e.name, color = theme.subText, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(value, color = theme.text, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                            Text(e.name, color = theme.subText.copy(alpha = if (offline) 0.5f else 1f), fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(if (offline) "Offline" else value, color = if (offline) theme.subText.copy(alpha = 0.5f) else theme.text, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1)
                         }
                     }
                 }
@@ -389,6 +413,86 @@ private fun Cameras(haCams: List<HaEntity>, liveCams: List<GCam>, activity: Main
                     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Outlined.Videocam, null, tint = theme.text, modifier = Modifier.size(28.dp))
                         Text(c.name, color = theme.text, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp, start = 8.dp, end = 8.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** A device icon for [e]: filled when it's on, outlined when off. */
+fun haIcon(e: HaEntity, on: Boolean): ImageVector {
+    val n = (e.id + " " + e.name).lowercase()
+    val (f, o) = when {
+        e.domain == "light" || (e.domain == "switch" && Regex("light|lamp|spot|bulb|cabinet").containsMatchIn(n)) -> Icons.Filled.Lightbulb to Icons.Outlined.Lightbulb
+        e.domain == "fan" || "fan" in n -> Icons.Filled.Air to Icons.Outlined.Air
+        e.domain == "lock" -> if (on) Icons.Filled.LockOpen to Icons.Outlined.LockOpen else Icons.Filled.Lock to Icons.Outlined.Lock
+        e.domain == "cover" -> Icons.Filled.Garage to Icons.Outlined.Garage
+        e.domain == "climate" || e.deviceClass == "temperature" -> Icons.Filled.Thermostat to Icons.Outlined.Thermostat
+        e.domain == "camera" -> Icons.Filled.Videocam to Icons.Outlined.Videocam
+        e.domain == "media_player" -> Icons.Filled.Tv to Icons.Outlined.Tv
+        e.domain == "scene" -> Icons.Filled.Palette to Icons.Outlined.Palette
+        e.domain == "script" -> Icons.Filled.PlayArrow to Icons.Outlined.PlayArrow
+        e.domain == "vacuum" -> Icons.Filled.CleaningServices to Icons.Outlined.CleaningServices
+        e.deviceClass in setOf("power", "energy", "current", "voltage") -> Icons.Filled.Bolt to Icons.Outlined.Bolt
+        e.deviceClass == "humidity" -> Icons.Filled.WaterDrop to Icons.Outlined.WaterDrop
+        e.deviceClass == "connectivity" || Regex("wan|wifi|router|download|upload").containsMatchIn(n) -> Icons.Filled.Wifi to Icons.Outlined.Wifi
+        Regex("printer|mfc|ink|toner").containsMatchIn(n) -> Icons.Filled.Print to Icons.Outlined.Print
+        e.domain == "switch" || e.domain == "input_boolean" -> Icons.Filled.Power to Icons.Outlined.Power
+        else -> Icons.Filled.Sensors to Icons.Outlined.Sensors
+    }
+    return if (on) f else o
+}
+
+/** Your teams (logo, last 3 results) on one side, live games and what's next on the other. OK opens Live TV's Sports tab. */
+@Composable
+private fun Sports(g: LiveGlance, theme: VanillaTheme, wide: Boolean) {
+    val ctx = LocalContext.current
+    val zoom = LocalZoom.current
+    val time = remember { DateTimeFormatter.ofPattern("EEE h:mm a") }
+    val live = g.games.filter { it.state == "in" }
+    val upcoming = g.teams.flatMap { t -> t.next.map { t to it } }.sortedBy { it.second.start }.take(if (zoom) 8 else 4)
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Title("My teams", theme)
+            if (g.teams.isEmpty()) Text("Pick teams in the setup app to see results here.", color = theme.subText, fontSize = 12.sp)
+            g.teams.take(if (zoom) 8 else 4).forEach { t ->
+                val body: @Composable BoxScope.() -> Unit = {
+                    Row(Modifier.fillMaxSize().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(5.dp, 26.dp).clip(RoundedCornerShape(2.dp)).background(teamColor(t.color, theme.accent)))
+                        Spacer(Modifier.width(6.dp))
+                        if (t.logo.isNotBlank()) AsyncImage(t.logo, null, modifier = Modifier.size(28.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.weight(1f)) {
+                            t.recent.forEach { r ->
+                                val c = when (r.result) { "W" -> Color(0xFF30A46C); "L" -> Color(0xFFE5484D); else -> theme.subText }
+                                Row(Modifier.clip(RoundedCornerShape(6.dp)).background(c.copy(alpha = 0.18f)).padding(horizontal = 5.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(r.result, color = c, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    Spacer(Modifier.width(3.dp))
+                                    if (r.oppLogo.isNotBlank()) AsyncImage(r.oppLogo, null, modifier = Modifier.size(12.dp))
+                                    Text(" ${r.us}-${r.them}", color = theme.text, fontSize = 10.sp, maxLines = 1)
+                                }
+                            }
+                            if (t.recent.isEmpty()) Text(t.name, color = theme.text, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+                Card(theme, if (wide || zoom) 330.dp else 250.dp, 40.dp, onClick = { openLive(ctx, "tab", "sports") }, content = body)
+            }
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (live.isNotEmpty()) Scores(live, theme, "Live now")
+            Title("Up next", theme)
+            if (upcoming.isEmpty() && live.isEmpty()) Text("No games scheduled", color = theme.subText, fontSize = 12.sp)
+            upcoming.forEach { (t, n) ->
+                Card(theme, if (wide || zoom) 330.dp else 250.dp, 40.dp, onClick = { openLive(ctx, if (n.live) "tune" else "tab", if (n.live) "game:" + t.abbr else "sports") }) {
+                    Row(Modifier.fillMaxSize().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (t.logo.isNotBlank()) AsyncImage(t.logo, null, modifier = Modifier.size(22.dp))
+                        Text(if (n.home) " vs " else " @ ", color = theme.subText, fontSize = 11.sp)
+                        if (n.oppLogo.isNotBlank()) AsyncImage(n.oppLogo, null, modifier = Modifier.size(22.dp))
+                        Spacer(Modifier.width(8.dp))
+                        val whenText = if (n.live) "LIVE" else java.time.Instant.ofEpochMilli(n.start).atZone(ZoneId.systemDefault()).format(time)
+                        Text(listOf(whenText, n.network).filter { it.isNotBlank() }.joinToString(" · "), color = if (n.live) Color(0xFFE5484D) else theme.text, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }

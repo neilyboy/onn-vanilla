@@ -16,6 +16,8 @@ data class Look(
     val adult: Boolean = true,
     val emptySlots: Boolean = false,
     val layout: String = "classic",
+    /** Home screen "On now": "" recent + favorites, "fav" favorites only, "group:<name>" a guide group. */
+    val onNow: String = "",
 ) {
     val rowHeightDp get() = listOf(50, 62, 80)[rows.coerceIn(0, 2)]
 
@@ -23,7 +25,7 @@ data class Look(
         context.getSharedPreferences("look", Context.MODE_PRIVATE).edit()
             .putFloat("scale", scale).putFloat("text", text).putInt("rows", rows).putInt("hours", guideHours)
             .putString("accent", accent).putString("background", background).putBoolean("logos", guideLogos)
-            .putInt("hero", hero).putBoolean("adult", adult).putBoolean("empty", emptySlots).putString("layout", layout).apply()
+            .putInt("hero", hero).putBoolean("adult", adult).putBoolean("empty", emptySlots).putString("layout", layout).putString("onnow", onNow).apply()
     }
 
     companion object {
@@ -50,7 +52,7 @@ data class Look(
             return Look(
                 p.getFloat("scale", 1f), p.getFloat("text", 1f), p.getInt("rows", 1), p.getInt("hours", 3),
                 p.getString("accent", "") ?: "", p.getString("background", "midnight") ?: "midnight", p.getBoolean("logos", true),
-                p.getInt("hero", 1), p.getBoolean("adult", true), p.getBoolean("empty", false), p.getString("layout", "classic") ?: "classic",
+                p.getInt("hero", 1), p.getBoolean("adult", true), p.getBoolean("empty", false), p.getString("layout", "classic") ?: "classic", p.getString("onnow", "") ?: "",
             )
         }
 

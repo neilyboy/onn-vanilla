@@ -13,7 +13,9 @@ data class GGame(val id: String, val league: String, val state: String, val deta
 data class GResume(val key: String, val title: String, val subtitle: String, val poster: String, val progress: Float)
 data class GVod(val id: String, val title: String, val poster: String, val series: Boolean)
 data class GCam(val name: String, val logo: String)
-data class LiveGlance(val profile: String, val onNow: List<GChan>, val games: List<GGame>, val resume: List<GResume>, val newVod: List<GVod>, val cameras: List<GCam> = emptyList())
+data class GResult(val opp: String, val oppLogo: String, val home: Boolean, val start: Long, val us: String, val them: String, val result: String, val network: String, val live: Boolean)
+data class GTeamSched(val league: String, val abbr: String, val name: String, val logo: String, val color: String, val recent: List<GResult>, val next: List<GResult>)
+data class LiveGlance(val profile: String, val onNow: List<GChan>, val games: List<GGame>, val resume: List<GResume>, val newVod: List<GVod>, val cameras: List<GCam> = emptyList(), val teams: List<GTeamSched> = emptyList())
 
 private const val LIVE_PKG = "tv.vanilla.live"
 
@@ -35,6 +37,10 @@ fun readGlance(ctx: Context): LiveGlance? = runCatching {
         r.optJSONArray("resume").objs().map { GResume(it.optString("key"), it.optString("title"), it.optString("subtitle"), it.optString("poster"), it.optDouble("progress", 0.0).toFloat()) },
         r.optJSONArray("newVod").objs().map { GVod(it.optString("id"), it.optString("title"), it.optString("poster"), it.optBoolean("series")) },
         r.optJSONArray("cameras").objs().map { GCam(it.optString("name"), it.optString("logo")) },
+        r.optJSONArray("teams").objs().map { t ->
+            val res = { a: JSONArray? -> a.objs().map { GResult(it.optString("opp"), it.optString("oppLogo"), it.optBoolean("home"), it.optLong("start"), it.optString("us"), it.optString("them"), it.optString("result"), it.optString("network"), it.optBoolean("live")) } }
+            GTeamSched(t.optString("league"), t.optString("abbr"), t.optString("name"), t.optString("logo"), t.optString("color"), res(t.optJSONArray("recent")), res(t.optJSONArray("next")))
+        },
     )
 }.getOrNull()
 

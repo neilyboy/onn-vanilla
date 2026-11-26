@@ -297,6 +297,59 @@ fun fetchGames(leagues: List<String>): List<Game> = leagues.flatMap { league ->
     }.getOrDefault(emptyList())
 }
 
+/**
+ * Last 3 results and next 3 games for each favorite team, in every followed league that has that team.
+ * Teams with nothing in the last 3 weeks or next 2 weeks (off season) are left out.
+ */
+fun fetchTeamSchedules(leagues: List<String>, teams: Set<String>): org.json.JSONArray {
+    val out = ArrayList<JSONObject>()
+    val now = System.currentTimeMillis(); val day = 86_400_000L
+    // Abbreviations repeat across levels (CHI is the Bears and Chicago State), so a pro match wins over college.
+    val pro = HashSet<String>()
+    for (league in leagues.sortedBy { "college" in it }) for (abbr in teams) {
+        val path = LEAGUE_PATHS[league] ?: continue
+        if ("college" in league && abbr in pro) continue
+        runCatching {
+            val root = JSONObject(httpGet("https://site.api.espn.com/apis/site/v2/sports/$path/teams/${abbr.lowercase()}/schedule"))
+            val team = root.optJSONObject("team") ?: return@runCatching
+            if (!team.optString("abbreviation").equals(abbr, true)) return@runCatching
+            val events = root.optJSONArray("events") ?: return@runCatching
+            val recent = ArrayList<JSONObject>(); val next = ArrayList<JSONObject>()
+            for (i in 0 until events.length()) {
+                val e = events.getJSONObject(i)
+                val comp = e.optJSONArray("competitions")?.optJSONObject(0) ?: continue
+                val start = runCatching { Instant.parse(e.optString("date").let { if (it.length == 17) it.dropLast(1) + ":00Z" else it }).toEpochMilli() }.getOrDefault(0L)
+                val cs = comp.optJSONArray("competitors") ?: continue
+                val list = (0 until cs.length()).map { cs.getJSONObject(it) }
+                val us = list.firstOrNull { it.optJSONObject("team")?.optString("abbreviation").equals(abbr, true) } ?: continue
+                val them = list.firstOrNull { it !== us } ?: continue
+                val ot = them.optJSONObject("team") ?: continue
+                val logo = ot.optJSONArray("logos")?.optJSONObject(0)?.optString("href") ?: ot.optString("logo")
+                val score = { c: JSONObject -> c.optJSONObject("score")?.optString("displayValue") ?: c.optString("score") }
+                val state = comp.optJSONObject("status")?.optJSONObject("type")?.optString("state") ?: e.optJSONObject("status")?.optJSONObject("type")?.optString("state") ?: ""
+                val g = JSONObject().put("opp", ot.optString("abbreviation")).put("oppLogo", logo).put("home", us.optString("homeAway") == "home").put("start", start)
+                if (state == "post") {
+                    val a = score(us); val b = score(them)
+                    val res = when { us.optBoolean("winner") -> "W"; them.optBoolean("winner") -> "L"; else -> "T" }
+                    recent += g.put("us", a).put("them", b).put("result", res)
+                } else if (start > now - 4 * 3600_000L) {
+                    val net = comp.optJSONArray("broadcasts")?.optJSONObject(0)?.let { it.optJSONObject("media")?.optString("shortName") ?: it.optJSONArray("names")?.optString(0) } ?: ""
+                    next += g.put("network", net).put("live", state == "in")
+                }
+            }
+            val last = recent.sortedBy { it.optLong("start") }.takeLast(3).reversed()
+            val upcoming = next.sortedBy { it.optLong("start") }.take(3)
+            val active = last.any { it.optLong("start") > now - 21 * day } || upcoming.any { it.optLong("start") < now + 14 * day }
+            if (!active) return@runCatching
+            if ("college" !in league) pro += abbr
+            out.add(JSONObject().put("league", league).put("abbr", team.optString("abbreviation")).put("name", team.optString("displayName"))
+                .put("logo", team.optString("logo").ifBlank { team.optJSONArray("logos")?.optJSONObject(0)?.optString("href") ?: "" })
+                .put("color", team.optString("color")).put("recent", org.json.JSONArray(last)).put("next", org.json.JSONArray(upcoming)))
+        }
+    }
+    return org.json.JSONArray(out.sortedBy { it.optJSONArray("next")?.optJSONObject(0)?.optLong("start") ?: Long.MAX_VALUE })
+}
+
 private fun norm(s: String) = s.lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
 
 private fun containsToken(haystack: String, needle: String): Boolean {

@@ -35,6 +35,8 @@ class MainActivity : ComponentActivity() {
     val glance = mutableStateOf<LiveGlance?>(null)
     val radar = mutableStateOf<String?>(null)
     val ha = mutableStateOf<List<HaEntity>>(emptyList())
+    val haAll = mutableStateOf<List<HaEntity>>(emptyList())
+    val radarFrames = mutableStateOf<List<String>>(emptyList())
     val photos = mutableStateOf<List<String>>(emptyList())
     val wallColor = mutableStateOf<androidx.compose.ui.graphics.Color?>(null)
     val look = mutableStateOf(HomeLook())
@@ -133,7 +135,7 @@ class MainActivity : ComponentActivity() {
 
     private suspend fun haLoop() {
         while (true) {
-            config.value?.let { c -> if (widgetOn("ha") || widgetOn("cameras")) ha.value = withContext(Dispatchers.IO) { fetchHa(c) } }
+            config.value?.let { c -> if (widgetOn("ha") || widgetOn("cameras")) loadHa(c) }
             delay(if (idle.value) 120_000L else 20_000L)
         }
     }
@@ -143,8 +145,23 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             withContext(Dispatchers.IO) { haToggle(c, e) }
             delay(700)
-            ha.value = withContext(Dispatchers.IO) { fetchHa(c) }
+            loadHa(c)
         }
+    }
+
+    private fun haSet(key: String) = homePrefs.getStringSet(key, emptySet()).orEmpty()
+
+    suspend fun loadHa(c: LauncherConfig) {
+        withContext(Dispatchers.IO) { fetchHaAll(c) }?.let { haAll.value = it }
+        ha.value = haShown(c, haAll.value, haSet("ha_hidden"), haSet("ha_added"))
+    }
+
+    /** Shows or hides one Home Assistant entity on Home (saved on this TV). */
+    fun setHaShown(id: String, show: Boolean) {
+        val hidden = haSet("ha_hidden").toMutableSet(); val added = haSet("ha_added").toMutableSet()
+        if (show) { hidden -= id; added += id } else { hidden += id; added -= id }
+        homePrefs.edit().putStringSet("ha_hidden", hidden).putStringSet("ha_added", added).apply()
+        config.value?.let { c -> ha.value = haShown(c, haAll.value, hidden, added) }
     }
 
     private suspend fun glanceLoop() {
@@ -160,7 +177,7 @@ class MainActivity : ComponentActivity() {
         news.value = if (c.newsFeeds.isEmpty()) emptyList() else fetchNews(c.newsFeeds, if (widgetOn("news")) 12 else 8)
         alerts.value = if (c.alerts && c.hasWeather) fetchAlerts(c.latitude, c.longitude) else emptyList()
         if (widgetOn("radio") && radioList.value.isEmpty()) withContext(Dispatchers.Main) { loadRadio(radioGenre.value) }
-        if (widgetOn("weather")) radar.value = fetchRadarBase()
+        if (widgetOn("weather")) { radarFrames.value = fetchRadarFrames(); radar.value = radarFrames.value.lastOrNull() }
     }
 
     private suspend fun feedLoop() {

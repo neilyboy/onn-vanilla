@@ -17,11 +17,16 @@ object Glance {
 
     fun write(
         ctx: android.content.Context, profile: String, channels: List<Channel>, epg: Map<String, List<Programme>>,
-        favorites: Set<String>, recents: List<String>, games: List<Game>, favTeams: Set<String>,
+        favorites: Set<String>, recents: List<String>, games: List<Game>, favTeams: Set<String>, source: String = "",
     ) = runCatching {
         val now = System.currentTimeMillis()
         val byName = channels.associateBy { it.name }
-        val picks = (recents + favorites.sorted()).distinct().mapNotNull { byName[it] }.take(12)
+        val airing = { c: Channel -> epg[c.tvgId]?.firstOrNull { now in it.start until it.stop }?.title?.let { !PLACEHOLDER.containsMatchIn(it) } == true }
+        val picks = when {
+            source == "fav" -> favorites.sorted().mapNotNull { byName[it] }
+            source.startsWith("group:") -> channels.filter { it.group == source.removePrefix("group:") && airing(it) }
+            else -> (recents + favorites.sorted()).distinct().mapNotNull { byName[it] }
+        }.take(12)
         val onNow = JSONArray()
         picks.forEach { c ->
             val p = epg[c.tvgId]?.firstOrNull { now in it.start until it.stop }
@@ -44,6 +49,21 @@ object Glance {
         val old = runCatching { JSONObject(file(ctx).readText()) }.getOrNull()
         val root = JSONObject().put("profile", profile).put("at", now).put("onNow", onNow).put("games", ga).put("resume", ra).put("cameras", cams)
             .put("newVod", old?.optJSONArray("newVod") ?: JSONArray()).put("newVodAt3", old?.optLong("newVodAt3") ?: 0L)
+            .put("teams", old?.optJSONArray("teams") ?: JSONArray()).put("teamsAt", old?.optLong("teamsAt") ?: 0L)
+        val tmp = File(ctx.filesDir, "glance.json.tmp")
+        tmp.writeText(root.toString())
+        tmp.renameTo(file(ctx))
+    }
+
+    private val PLACEHOLDER = Regex("""off ?air|no program|no info|no event|scoreboard final""", RegexOption.IGNORE_CASE)
+
+    fun teamsAge(ctx: android.content.Context) =
+        System.currentTimeMillis() - (runCatching { JSONObject(file(ctx).readText()).optLong("teamsAt") }.getOrNull() ?: 0L)
+
+    /** Recent results and upcoming games for each favorite team, for the home screen Sports widget. */
+    fun writeTeams(ctx: android.content.Context, teams: JSONArray) = runCatching {
+        val root = runCatching { JSONObject(file(ctx).readText()) }.getOrDefault(JSONObject())
+        root.put("teams", teams).put("teamsAt", System.currentTimeMillis())
         val tmp = File(ctx.filesDir, "glance.json.tmp")
         tmp.writeText(root.toString())
         tmp.renameTo(file(ctx))

@@ -67,6 +67,8 @@ class MainActivity : ComponentActivity() {
     val resumeLast = mutableStateOf(false)
     var searching = false
     val searchNow = mutableIntStateOf(0)
+    /** A tab to open from the home screen, e.g. "sports". */
+    val openTab = mutableStateOf<String?>(null)
     val reminders = mutableStateOf<Set<String>>(emptySet())
     val ticker = mutableIntStateOf(1)
     val kickoff = mutableStateOf<Pair<Game, Channel>?>(null)
@@ -169,7 +171,10 @@ class MainActivity : ComponentActivity() {
         val p = profile.value.name
         val ch = shownChannels.value; val g = epg.value; val f = favorites.value; val r = recents.value; val gm = games.value
         if (ch.isEmpty()) return
-        lifecycleScope.launch(Dispatchers.IO) { Glance.write(this@MainActivity, p, ch, g, f, r, gm, Repo.favTeams) }
+        lifecycleScope.launch(Dispatchers.IO) { Glance.write(this@MainActivity, p, ch, g, f, r, gm, Repo.favTeams, look.value.onNow) }
+        if (Glance.teamsAge(this) > 30 * 60_000L && Repo.favTeams.isNotEmpty()) lifecycleScope.launch(Dispatchers.IO) {
+            Glance.writeTeams(this@MainActivity, fetchTeamSchedules(Repo.leagues, Repo.favTeams))
+        }
     }
 
     override fun onStop() {
@@ -274,6 +279,7 @@ class MainActivity : ComponentActivity() {
         i.getStringExtra("m3u_url")?.let { settings.m3uOverride = it; changed = true }
         i.getStringExtra("epg_url")?.let { settings.epgOverride = it; changed = true }
         pendingTune = i.getStringExtra("tune")
+        i.getStringExtra("tab")?.let { openTab.value = it }
         i.getStringExtra("vod_id")?.let { pendingVod = it }
         i.getStringExtra("vod_key")?.let { key ->
             ResumeStore.get(this, settings.profile, key)?.let { r -> playVod(r.url, r.title, r.subtitle, r.poster, r.key, settings.profile) }

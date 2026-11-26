@@ -98,6 +98,7 @@ fun LiveApp(a: MainActivity) {
     var tab by remember { mutableStateOf(Tab.Home) }
     LaunchedEffect(a.openSeries.value) { if (a.openSeries.value != null) tab = Tab.Series }
     LaunchedEffect(a.searchNow.intValue) { if (a.searchNow.intValue > 0) tab = Tab.Search }
+    LaunchedEffect(a.openTab.value) { Tab.entries.firstOrNull { it.name.equals(a.openTab.value, true) }?.let { tab = it }; a.openTab.value = null }
     val tabReq = remember { Tab.entries.associateWith { FocusRequester() } }
     var topFocused by remember { mutableStateOf(false) }
     var lastBack by remember { mutableStateOf(0L) }
@@ -813,6 +814,13 @@ private fun LookTab(a: MainActivity, accent: Color) {
         item { LookRow("Text size", Look.TEXTS.firstOrNull { it.first == l.text }?.second ?: pct(l.text), accent) {
             a.setLook(l.copy(text = Look.TEXTS.map { it.first }.next(l.text))) } }
         item { LookRow("Guide layout", Look.LAYOUTS[l.layout] ?: "Classic grid", accent) { a.setLook(l.copy(layout = Look.LAYOUTS.keys.toList().next(l.layout))) } }
+        item {
+            val groups = remember(a.shownChannels.value) { a.shownChannels.value.map { it.group }.distinct() }
+            val opts = listOf("", "fav") + groups.map { "group:$it" }
+            LookRow("Home screen On now", when { l.onNow == "fav" -> "Favorites"; l.onNow.startsWith("group:") -> l.onNow.removePrefix("group:"); else -> "Recent and favorites" }, accent) {
+                a.setLook(l.copy(onNow = opts[(opts.indexOf(l.onNow) + 1) % opts.size])); a.writeGlance()
+            }
+        }
         item { LookRow("Guide rows", Look.ROWS[l.rows.coerceIn(0, 2)], accent) { a.setLook(l.copy(rows = (l.rows + 1) % 3)) } }
         item { LookRow("Guide shows", "${l.guideHours} hours", accent) { a.setLook(l.copy(guideHours = Look.HOURS.next(l.guideHours))) } }
         item { LookRow("Guide channel logos", if (l.guideLogos) "On" else "Off", accent) { a.setLook(l.copy(guideLogos = !l.guideLogos)) } }

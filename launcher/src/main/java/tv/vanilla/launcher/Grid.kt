@@ -16,7 +16,7 @@ const val ROWS = 6
 data class WidgetInfo(val id: String, val name: String, val w: Int, val h: Int)
 
 val CATALOG = listOf(
-    WidgetInfo("scores", "Scores", 4, 2),
+    WidgetInfo("scores", "Sports", 4, 2),
     WidgetInfo("onnow", "On now", 5, 2),
     WidgetInfo("weather", "Weather & radar", 3, 4),
     WidgetInfo("calendar", "Calendar", 3, 3),

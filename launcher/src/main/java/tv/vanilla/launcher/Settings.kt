@@ -26,7 +26,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.*
 import kotlinx.coroutines.delay
 
-private val SECTIONS = linkedMapOf("look" to "Look", "layout" to "Layout", "widgets" to "Widgets", "system" to "System")
+private val SECTIONS = linkedMapOf("look" to "Look", "layout" to "Layout", "widgets" to "Widgets", "ha" to "Home Assistant", "system" to "System")
 private val PANEL = Color(0xF20B0D12)
 
 /** Home settings on the TV. The menu is see-through on the right so theme changes show behind it. */
@@ -52,6 +52,7 @@ fun HomeSettings(a: MainActivity, onEditLayout: () -> Unit, onAdvanced: () -> Un
                     "look" -> lookSection(a, theme)
                     "layout" -> layoutSection(a, theme, onEditLayout)
                     "widgets" -> widgetsSection(a, theme)
+                    "ha" -> haSection(a, theme)
                     "system" -> systemSection(a, theme, onAdvanced, onClose)
                 }
             }
@@ -130,6 +131,25 @@ private fun androidx.compose.foundation.lazy.LazyListScope.widgetsSection(a: Mai
                 }
             }
         }
+    }
+}
+
+private val HA_DOMAINS = linkedMapOf(
+    "light" to "Lights", "switch" to "Switches and plugs", "fan" to "Fans", "lock" to "Locks", "cover" to "Doors and blinds", "climate" to "Thermostats",
+    "camera" to "Cameras", "media_player" to "TVs and speakers", "scene" to "Scenes", "script" to "Scripts", "input_boolean" to "Helpers",
+    "vacuum" to "Vacuums", "sensor" to "Sensors", "binary_sensor" to "Status sensors",
+)
+
+private fun androidx.compose.foundation.lazy.LazyListScope.haSection(a: MainActivity, theme: VanillaTheme) {
+    heading("Home Assistant", "New lights, switches and locks show up on their own. OK shows or hides one on Home.")
+    val all = a.haAll.value
+    if (all.isEmpty()) { item { SetRow("Not connected", "Turn on the Home widget, or add Home Assistant in the setup app", theme) {} }; return }
+    val shown = a.ha.value.map { it.id }.toSet()
+    HA_DOMAINS.forEach { (domain, label) ->
+        val list = all.filter { it.domain == domain }.sortedBy { it.name.lowercase() }
+        if (list.isEmpty()) return@forEach
+        heading(label)
+        list.forEach { e -> item(e.id) { SetRow(e.name, if (e.id in shown) "Shown" else "Hidden", theme) { a.setHaShown(e.id, e.id !in shown) } } }
     }
 }
 

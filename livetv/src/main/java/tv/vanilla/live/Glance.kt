@@ -49,6 +49,14 @@ object Glance {
         tmp.renameTo(file(ctx))
     }
 
+    fun playingFile(ctx: android.content.Context) = File(ctx.filesDir, "playing.json")
+
+    /** What this box is watching right now, for the Rooms widget on the home screen. */
+    fun writePlaying(ctx: android.content.Context, c: Channel?) = runCatching {
+        if (c == null) { playingFile(ctx).delete(); return@runCatching }
+        playingFile(ctx).writeText(JSONObject().put("name", c.name).put("number", c.number).put("logo", c.logo).put("at", System.currentTimeMillis()).toString())
+    }
+
     fun newVodAge(ctx: android.content.Context) =
         System.currentTimeMillis() - (runCatching { JSONObject(file(ctx).readText()).optLong("newVodAt3") }.getOrNull() ?: 0L)
 
@@ -65,7 +73,8 @@ object Glance {
 class GlanceProvider : ContentProvider() {
     override fun onCreate() = true
     override fun query(uri: Uri, projection: Array<out String>?, selection: String?, args: Array<out String>?, sort: String?): Cursor {
-        val text = context?.let { runCatching { Glance.file(it).readText() }.getOrNull() } ?: "{}"
+        val f = context?.let { if (uri.lastPathSegment == "playing") Glance.playingFile(it) else Glance.file(it) }
+        val text = f?.let { runCatching { it.readText() }.getOrNull() } ?: "{}"
         return MatrixCursor(arrayOf("json")).apply { addRow(arrayOf(text)) }
     }
     override fun getType(uri: Uri) = "application/json"

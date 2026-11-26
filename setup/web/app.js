@@ -4,6 +4,11 @@ let S = {};
 let saveTimer;
 
 const THEMES = {
+  glass: { bg: "radial-gradient(circle at 20% 20%,#3b6ea8,transparent 60%),radial-gradient(circle at 80% 80%,#a8487a,transparent 60%),#0d1220", text: "#F5F7FA", tile: "rgba(255,255,255,.14)", accent: "#FFFFFF" },
+  neon: { bg: "#05060B", text: "#D8F6FF", tile: "rgba(0,240,255,.15)", accent: "#00F0FF" },
+  paper: { bg: "linear-gradient(135deg,#F4F1EA,#ECE7DC)", text: "#1F1D1A", tile: "rgba(0,0,0,.08)", accent: "#D9480F" },
+  aurora: { bg: "linear-gradient(160deg,#0f2027,#203a43,#2c5364)", text: "#F0FBFF", tile: "rgba(255,255,255,.15)", accent: "#7CF5C8" },
+  wallpaper: { bg: "linear-gradient(135deg,#1B2230,#10141C)", text: "#F5F5F5", tile: "rgba(255,255,255,.15)", accent: "#8AB4F8" },
   midnight: { bg: "linear-gradient(135deg,#0B0D12,#141826)", text: "#F2F2F2", tile: "rgba(255,255,255,.2)", accent: "#8AB4F8" },
   graphite: { bg: "linear-gradient(135deg,#111,#1C1C1C)", text: "#EDEDED", tile: "rgba(255,255,255,.15)", accent: "#FFFFFF" },
   nord: { bg: "linear-gradient(135deg,#2E3440,#3B4252)", text: "#ECEFF4", tile: "rgba(76,86,106,.6)", accent: "#88C0D0" },
@@ -44,7 +49,7 @@ function go(step) {
 const WIDGET_PRESETS = {
   minimal: {},
   glance: { wScores: "center", wOnnow: "center", wResume: "center", wNewvod: "center" },
-  mirror: { wCalendar: "left", wNews: "left", wWeather: "right", wHa: "right", wScores: "center", wOnnow: "center", wCameras: "center", wResume: "center", wNewvod: "center" },
+  mirror: { wCalendar: "left", wNews: "left", wWeather: "right", wHa: "right", wRadio: "right", wRooms: "left", wScores: "center", wOnnow: "center", wCameras: "center", wResume: "center", wNewvod: "center" },
 };
 
 function bindFields() {

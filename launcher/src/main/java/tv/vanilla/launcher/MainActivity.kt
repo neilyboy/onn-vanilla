@@ -41,6 +41,45 @@ class MainActivity : ComponentActivity() {
     private val localCells = mutableStateOf<List<Cell>?>(null)
     private val slotCells = mutableStateOf<Map<String, List<Cell>>>(emptyMap())
     val period = mutableStateOf(periodNow())
+    val rooms by lazy { Rooms(this) }
+    val radioOn = mutableStateOf<Station?>(null)
+    val radioPlaying = mutableStateOf(false)
+    val radioList = mutableStateOf<List<Station>>(emptyList())
+    val radioGenre = mutableStateOf("")
+    private var radioPlayer: androidx.media3.exoplayer.ExoPlayer? = null
+
+    /** Plays [s], or stops when it's already playing (or null). Pauses itself when another app starts playing. */
+    fun playRadio(s: Station?) {
+        if (s == null || (radioOn.value?.url == s.url && radioPlaying.value)) { radioPlayer?.stop(); radioOn.value = null; radioPlaying.value = false; return }
+        val p = radioPlayer ?: androidx.media3.exoplayer.ExoPlayer.Builder(this)
+            .setAudioAttributes(androidx.media3.common.AudioAttributes.Builder().setUsage(androidx.media3.common.C.USAGE_MEDIA).setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
+            .build().also { pl ->
+                radioPlayer = pl
+                pl.addListener(object : androidx.media3.common.Player.Listener {
+                    override fun onIsPlayingChanged(isPlaying: Boolean) { radioPlaying.value = isPlaying }
+                    override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                        Toast.makeText(this@MainActivity, "${radioOn.value?.name ?: "Station"} isn't playing right now", Toast.LENGTH_SHORT).show()
+                        radioOn.value = null; radioPlaying.value = false
+                    }
+                })
+            }
+        radioOn.value = s
+        p.setMediaItem(androidx.media3.common.MediaItem.fromUri(s.url))
+        p.prepare(); p.play()
+    }
+
+    fun loadRadio(tag: String) {
+        radioGenre.value = tag
+        val mine = stationsFromLines(config.value?.radioStations.orEmpty())
+        lifecycleScope.launch { radioList.value = mine + withContext(Dispatchers.IO) { fetchStations(tag) }.filter { s -> mine.none { it.url == s.url } } }
+    }
+
+    private suspend fun roomsLoop() {
+        while (true) {
+            if (widgetOn("rooms")) { rooms.start(); withContext(Dispatchers.IO) { rooms.poll() } }
+            delay(if (idle.value) 60_000L else 15_000L)
+        }
+    }
 
     private val homePrefs get() = getSharedPreferences("home", MODE_PRIVATE)
 
@@ -120,6 +159,7 @@ class MainActivity : ComponentActivity() {
         agenda.value = if (c.calendars.isEmpty()) emptyList() else fetchCalendar(c.calendars)
         news.value = if (c.newsFeeds.isEmpty()) emptyList() else fetchNews(c.newsFeeds, if (widgetOn("news")) 12 else 8)
         alerts.value = if (c.alerts && c.hasWeather) fetchAlerts(c.latitude, c.longitude) else emptyList()
+        if (widgetOn("radio") && radioList.value.isEmpty()) withContext(Dispatchers.Main) { loadRadio(radioGenre.value) }
         if (widgetOn("weather")) radar.value = fetchRadarBase()
     }
 
@@ -201,6 +241,12 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch { delay(3_000); feedLoop() }
         lifecycleScope.launch { glanceLoop() }
         lifecycleScope.launch { haLoop() }
+        lifecycleScope.launch { roomsLoop() }
+    }
+
+    override fun onDestroy() {
+        radioPlayer?.release()
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {

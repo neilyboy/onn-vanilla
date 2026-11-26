@@ -88,9 +88,11 @@ fun LauncherScreen(
     val grid = activity.preset != "minimal" && cells.isNotEmpty()
     val liveGame = if (look.gameDay && activity.preset != "minimal") activity.glance.value?.games?.firstOrNull { it.fav && it.state == "in" } else null
 
-    LaunchedEffect(cfg.idleTimeoutSec, lastInput) {
+    // Keys pressed inside dialogs don't reach the activity, so no photo frame while a menu or zoom view is open.
+    val overlay = showSettings || zoom != null || menuFor != null || showAdd || showPicker || editing != null || showSetup || edit != null
+    LaunchedEffect(cfg.idleTimeoutSec, lastInput, overlay) {
         idle = false
-        if (cfg.idleTimeoutSec > 0) {
+        if (cfg.idleTimeoutSec > 0 && !overlay) {
             delay(cfg.idleTimeoutSec * 1000L)
             idle = true
         }
@@ -189,9 +191,9 @@ fun LauncherScreen(
         if (showAdd) AddWidgetDialog(activity.cells.map { it.id }, theme) { w ->
             showAdd = false
             if (w != null) {
-                val spot = firstFree(activity.cells, w.id, w.w, w.h)
-                if (spot == null) android.widget.Toast.makeText(activity, "No room left. Remove or shrink a widget first.", android.widget.Toast.LENGTH_SHORT).show()
-                else { activity.setCells(activity.cells + spot); edit = spot.id to false }
+                val next = placeNew(activity.cells, w)
+                if (next == null) android.widget.Toast.makeText(activity, "No room left. Remove a widget first.", android.widget.Toast.LENGTH_SHORT).show()
+                else { activity.setCells(next); edit = w.id to false }
             }
         }
         if (showSetup) SetupDialog(activity, theme, onSettings) { showSetup = false }

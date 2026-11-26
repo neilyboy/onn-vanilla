@@ -57,6 +57,8 @@ fun widgetEmpty(id: String, a: MainActivity): Boolean {
         "ha" -> a.ha.value.none { it.domain != "camera" }
         "cameras" -> a.ha.value.none { it.domain == "camera" } && g?.cameras.isNullOrEmpty()
         "weather" -> a.weather.value == null
+        "radio" -> false
+        "rooms" -> false
         else -> false
     }
 }
@@ -82,6 +84,8 @@ fun Widget(id: String, activity: MainActivity, cfg: LauncherConfig, theme: Vanil
         "ha" -> activity.ha.value.filter { it.domain != "camera" }.takeIf { it.isNotEmpty() }?.let { HomePanel(it, activity, theme) }
         "cameras" -> Cameras(activity.ha.value.filter { it.domain == "camera" }, g?.cameras.orEmpty(), activity, cfg, theme)
         "weather" -> activity.weather.value?.let { HourlyRadar(it, activity.radar.value, cfg, theme, wide) }
+        "radio" -> RadioWidget(activity, theme)
+        "rooms" -> RoomsWidget(activity, theme)
     }
 }
 
@@ -97,7 +101,7 @@ private fun Panel(theme: VanillaTheme, content: @Composable ColumnScope.() -> Un
     else Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(theme.scrim.copy(alpha = 0.35f)).padding(14.dp), content = content)
 
 @Composable
-private fun Card(theme: VanillaTheme, width: Dp, height: Dp, onClick: () -> Unit, content: @Composable BoxScope.() -> Unit) {
+internal fun Card(theme: VanillaTheme, width: Dp, height: Dp, onClick: () -> Unit, content: @Composable BoxScope.() -> Unit) {
     if (LocalPreview.current) {
         Box(Modifier.size(width, height).clip(RoundedCornerShape(12.dp)).background(theme.tile), content = content)
         return
@@ -113,7 +117,7 @@ private fun Card(theme: VanillaTheme, width: Dp, height: Dp, onClick: () -> Unit
 }
 
 @Composable
-private fun Progress(p: Float, theme: VanillaTheme, modifier: Modifier = Modifier) {
+internal fun Progress(p: Float, theme: VanillaTheme, modifier: Modifier = Modifier) {
     Box(modifier.fillMaxWidth().height(3.dp).clip(CircleShape).background(theme.text.copy(alpha = 0.18f))) {
         Box(Modifier.fillMaxWidth(p.coerceIn(0f, 1f)).fillMaxHeight().background(theme.accent))
     }

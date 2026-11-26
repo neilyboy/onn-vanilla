@@ -45,6 +45,7 @@ data class LauncherConfig(
     val haToken: String = "",
     val haEntities: List<String> = emptyList(),
     val photos: List<String> = emptyList(),
+    val radioStations: List<String> = emptyList(),
 ) {
     fun widget(id: String) = if (layout == "minimal") null else widgets.firstOrNull { it.id == id }
     val hasWeather get() = showWeather && !latitude.isNaN() && !longitude.isNaN()
@@ -77,6 +78,7 @@ data class LauncherConfig(
                 haToken = root.optJSONObject("ha")?.optString("token", "") ?: "",
                 haEntities = strings(root.optJSONObject("ha")?.optJSONArray("entities")),
                 photos = strings(root.optJSONObject("photos")?.optJSONArray("sources")),
+                radioStations = strings(root.optJSONObject("radio")?.optJSONArray("stations")),
                 scale = ui.optDouble("scale", 1.0).toFloat().coerceIn(0.6f, 1.6f),
                 kenBurns = ui.optBoolean("ken_burns", true),
                 showWeather = ui.optBoolean("show_weather", true),

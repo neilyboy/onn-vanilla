@@ -143,6 +143,7 @@ class PlayerActivity : ComponentActivity() {
             lastChannel = list[target].url
             if (profileName.isNotBlank()) pushRecent(profileName, list[target].name)
         }
+        Glance.writePlaying(this, list[target])
         player.setMediaItem(MediaItem.fromUri(list[target].url))
         player.prepare()
         player.playWhenReady = true
@@ -181,6 +182,7 @@ class PlayerActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         if (::player.isInitialized) player.pause()
+        Glance.writePlaying(this, null)
     }
 
     override fun onStart() {

@@ -23,6 +23,8 @@ val CATALOG = listOf(
     WidgetInfo("news", "Headlines", 4, 2),
     WidgetInfo("resume", "Continue watching", 4, 3),
     WidgetInfo("newvod", "New on Movies & Series", 5, 3),
+    WidgetInfo("radio", "Radio", 3, 2),
+    WidgetInfo("rooms", "Rooms", 3, 2),
     WidgetInfo("ha", "Home Assistant", 3, 2),
     WidgetInfo("cameras", "Cameras", 4, 2),
 )
@@ -65,6 +67,17 @@ fun firstFree(cells: List<Cell>, id: String, w: Int, h: Int): Cell? {
     for (ww in w downTo 2) for (hh in h downTo 1) for (y in 0..ROWS - hh) for (x in 0..COLS - ww) {
         val c = Cell(id, x, y, ww, hh)
         if (cells.none { it.overlaps(c) }) return c
+    }
+    return null
+}
+
+/** Adds [w] to the grid. When it's full, the tallest widgets give up a row each until it fits. */
+fun placeNew(cells: List<Cell>, w: WidgetInfo): List<Cell>? {
+    var list = cells
+    repeat(ROWS * 2) {
+        firstFree(list, w.id, w.w, w.h)?.let { return list + it }
+        val tall = list.filter { it.h > 1 }.maxWithOrNull(compareBy({ it.h }, { it.w })) ?: return null
+        list = list.map { if (it == tall) it.copy(h = it.h - 1) else it }
     }
     return null
 }

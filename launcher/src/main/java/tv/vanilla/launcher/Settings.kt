@@ -124,9 +124,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.widgetsSection(a: Mai
                 if (on) a.setCells(a.cells.filter { it.id != w.id })
                 else {
                     if (a.preset == "minimal") a.setLook(a.look.value.copy(preset = "grid"))
-                    val spot = firstFree(a.cells, w.id, w.w, w.h)
-                    if (spot == null) Toast.makeText(a, "No room left. Remove or shrink a widget first.", Toast.LENGTH_SHORT).show()
-                    else a.setCells(a.cells + spot)
+                    val next = placeNew(a.cells, w)
+                    if (next == null) Toast.makeText(a, "No room left. Remove a widget first.", Toast.LENGTH_SHORT).show()
+                    else a.setCells(next)
                 }
             }
         }

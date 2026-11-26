@@ -47,6 +47,9 @@ type Setup struct {
 	Countdowns      string         `json:"countdowns,omitempty"`
 	WHa             string         `json:"wHa,omitempty"`
 	WCameras        string         `json:"wCameras,omitempty"`
+	WRadio          string         `json:"wRadio,omitempty"`
+	WRooms          string         `json:"wRooms,omitempty"`
+	RadioStations   string         `json:"radioStations,omitempty"`
 	HaURL           string         `json:"haUrl,omitempty"`
 	HaToken         string         `json:"haToken,omitempty"`
 	HaEntities      string         `json:"haEntities,omitempty"`
@@ -188,6 +191,7 @@ func (s Setup) boxConfig() (map[string]any, error) {
 		"widgets": widgets(s),
 		"ha":      map[string]any{"url": strings.TrimSpace(s.HaURL), "token": strings.TrimSpace(s.HaToken), "entities": entityIDs(s.HaEntities)},
 		"photos":  map[string]any{"sources": lines(s.Photos)},
+		"radio":   map[string]any{"stations": lines(s.RadioStations)},
 		"feeds": map[string]any{
 			"calendars": lines(s.Calendars), "news": newsFeeds(s), "alerts": !s.NoAlerts,
 		},
@@ -243,7 +247,7 @@ func widgets(s Setup) map[string]any {
 	items := []map[string]string{}
 	for _, w := range []struct{ id, pos string }{
 		{"weather", s.WWeather}, {"calendar", s.WCalendar}, {"news", s.WNews},
-		{"ha", s.WHa}, {"scores", s.WScores}, {"onnow", s.WOnnow}, {"cameras", s.WCameras}, {"resume", s.WResume}, {"newvod", s.WNewvod},
+		{"ha", s.WHa}, {"scores", s.WScores}, {"onnow", s.WOnnow}, {"cameras", s.WCameras}, {"resume", s.WResume}, {"newvod", s.WNewvod}, {"radio", s.WRadio}, {"rooms", s.WRooms},
 	} {
 		if w.pos == "left" || w.pos == "center" || w.pos == "right" {
 			items = append(items, map[string]string{"id": w.id, "pos": w.pos})

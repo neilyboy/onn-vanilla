@@ -268,6 +268,7 @@ fun Dock(
     onLaunch: (AppEntry) -> Unit, onLongApp: (AppEntry) -> Unit, onAdd: () -> Unit, onGear: () -> Unit, onGearLong: () -> Unit,
 ) {
     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Box(Modifier.align(Alignment.CenterStart)) { RadioPill(a, theme) }
         val shape = if (theme.style == "neon") RoundedCornerShape(8.dp) else RoundedCornerShape(size * 0.45f)
         Row(
             Modifier.clip(shape).background(theme.panel).border(1.dp, theme.edge, shape).padding(horizontal = 16.dp, vertical = 10.dp),

@@ -332,13 +332,14 @@ private fun Radar(lat: Double, lon: Double, radarBase: String, height: Dp, allFr
     val fx = (lon + 180) / 360 * n
     val fy = (1 - ln(tan(lat * PI / 180) + 1 / cos(lat * PI / 180)) / PI) / 2 * n
     val tx = floor(fx).toInt(); val ty = floor(fy).toInt()
-    // Full screen: bigger tiles, five across, so the map fills the wide view.
-    val tile = if (loop) height / 3 else 128.dp
     val hc = if (loop) 2 else 1
     BoxWithConstraints(Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(10.dp)).background(Color(0xFF1B1F27))) {
+        // Full screen: bigger tiles, five across, so the map fills the wide view.
+        val tile = if (loop) maxHeight / 3 else 128.dp
         val ox = maxWidth / 2 - tile * (hc + (fx - tx)).toFloat()
         val oy = maxHeight / 2 - tile * (1 + (fy - ty)).toFloat()
-        Box(Modifier.offset(ox, oy).requiredSize(tile * (2 * hc + 1), tile * 3)) {
+        // Unbounded so a map bigger than the panel isn't re-centered by layout, which would move it off the home dot.
+        Box(Modifier.offset(ox, oy).wrapContentSize(Alignment.TopStart, unbounded = true).requiredSize(tile * (2 * hc + 1), tile * 3)) {
             for (dy in -1..1) for (dx in -hc..hc) {
                 val x = ((tx + dx) % n + n) % n; val y = ty + dy
                 val m = Modifier.offset(tile * (dx + hc), tile * (dy + 1)).size(tile)

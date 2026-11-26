@@ -36,7 +36,7 @@ class MainActivity : ComponentActivity() {
     val radar = mutableStateOf<String?>(null)
     val ha = mutableStateOf<List<HaEntity>>(emptyList())
     val haAll = mutableStateOf<List<HaEntity>>(emptyList())
-    val radarFrames = mutableStateOf<List<String>>(emptyList())
+    val radarFrames = mutableStateOf<List<Pair<String, Long>>>(emptyList())
     val photos = mutableStateOf<List<String>>(emptyList())
     val wallColor = mutableStateOf<androidx.compose.ui.graphics.Color?>(null)
     val look = mutableStateOf(HomeLook())
@@ -177,7 +177,7 @@ class MainActivity : ComponentActivity() {
         news.value = if (c.newsFeeds.isEmpty()) emptyList() else fetchNews(c.newsFeeds, if (widgetOn("news")) 12 else 8)
         alerts.value = if (c.alerts && c.hasWeather) fetchAlerts(c.latitude, c.longitude) else emptyList()
         if (widgetOn("radio") && radioList.value.isEmpty()) withContext(Dispatchers.Main) { loadRadio(radioGenre.value) }
-        if (widgetOn("weather")) { radarFrames.value = fetchRadarFrames(); radar.value = radarFrames.value.lastOrNull() }
+        if (widgetOn("weather")) { radarFrames.value = fetchRadarFrames(); radar.value = radarFrames.value.lastOrNull()?.first }
     }
 
     private suspend fun feedLoop() {

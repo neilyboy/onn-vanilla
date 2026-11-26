@@ -163,11 +163,11 @@ fun fetchAlerts(lat: Double, lon: Double): List<Alert> = runCatching {
     }.sortedBy { listOf("Extreme", "Severe", "Moderate", "Minor").indexOf(it.severity).let { i -> if (i < 0) 9 else i } }
 }.getOrDefault(emptyList())
 
-/** RainViewer radar frames for the last ~2 hours, oldest first. */
-fun fetchRadarFrames(): List<String> = runCatching {
+/** RainViewer radar frames for the last ~2 hours as (tile base URL, unix time), oldest first. */
+fun fetchRadarFrames(): List<Pair<String, Long>> = runCatching {
     val r = JSONObject(httpGet("https://api.rainviewer.com/public/weather-maps.json", 15000))
     val past = r.getJSONObject("radar").getJSONArray("past")
-    (0 until past.length()).map { r.getString("host") + past.getJSONObject(it).getString("path") }
+    (0 until past.length()).map { past.getJSONObject(it).let { f -> r.getString("host") + f.getString("path") to f.optLong("time") } }
 }.getOrDefault(emptyList())
 
 /** Latest RainViewer radar frame, e.g. "https://tilecache.rainviewer.com/v2/radar/1700000000". */

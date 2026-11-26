@@ -292,7 +292,7 @@ private fun NewsCards(items: List<Headline>, theme: VanillaTheme, wide: Boolean)
 }
 
 @Composable
-private fun HourlyRadar(w: Weather, radar: String?, frames: List<String>, cfg: LauncherConfig, theme: VanillaTheme, wide: Boolean) {
+private fun HourlyRadar(w: Weather, radar: String?, frames: List<Pair<String, Long>>, cfg: LauncherConfig, theme: VanillaTheme, wide: Boolean) {
     val hourFmt = remember { DateTimeFormatter.ofPattern("ha") }
     Panel(theme) {
         Title("Next 12 hours", theme)
@@ -318,26 +318,30 @@ private const val ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/C
 
 /** A 3x3 map of zoom-7 tiles with the RainViewer radar on top, centered on the home location. Loops [frames] when given. */
 @Composable
-private fun Radar(lat: Double, lon: Double, radarBase: String, height: Dp, frames: List<String> = emptyList()) {
+private fun Radar(lat: Double, lon: Double, radarBase: String, height: Dp, allFrames: List<Pair<String, Long>> = emptyList()) {
+    // The last 8 frames (~80 min) keep the number of tiles held in memory reasonable on a TV box.
+    val frames = remember(allFrames) { allFrames.takeLast(8) }
     val loop = frames.size > 1
     var frame by remember(frames) { mutableIntStateOf(frames.lastIndex.coerceAtLeast(0)) }
     if (loop) LaunchedEffect(frames) {
         while (true) { delay(if (frame == frames.lastIndex) 1800 else 550); frame = (frame + 1) % frames.size }
     }
-    val layers = if (loop) frames else listOf(radarBase)
+    val layers = if (loop) frames.map { it.first } else listOf(radarBase)
     val z = 7
     val n = 1 shl z
     val fx = (lon + 180) / 360 * n
     val fy = (1 - ln(tan(lat * PI / 180) + 1 / cos(lat * PI / 180)) / PI) / 2 * n
     val tx = floor(fx).toInt(); val ty = floor(fy).toInt()
-    val tile = 128.dp
+    // Full screen: bigger tiles, five across, so the map fills the wide view.
+    val tile = if (loop) height / 3 else 128.dp
+    val hc = if (loop) 2 else 1
     BoxWithConstraints(Modifier.fillMaxWidth().height(height).clip(RoundedCornerShape(10.dp)).background(Color(0xFF1B1F27))) {
-        val ox = maxWidth / 2 - tile * (1 + (fx - tx)).toFloat()
+        val ox = maxWidth / 2 - tile * (hc + (fx - tx)).toFloat()
         val oy = maxHeight / 2 - tile * (1 + (fy - ty)).toFloat()
-        Box(Modifier.offset(ox, oy).requiredSize(tile * 3)) {
-            for (dy in -1..1) for (dx in -1..1) {
+        Box(Modifier.offset(ox, oy).requiredSize(tile * (2 * hc + 1), tile * 3)) {
+            for (dy in -1..1) for (dx in -hc..hc) {
                 val x = ((tx + dx) % n + n) % n; val y = ty + dy
-                val m = Modifier.offset(tile * (dx + 1), tile * (dy + 1)).size(tile)
+                val m = Modifier.offset(tile * (dx + hc), tile * (dy + 1)).size(tile)
                 AsyncImage("$ESRI/World_Dark_Gray_Base/MapServer/tile/$z/$y/$x", null, modifier = m)
                 // Every frame stays composed (only the current one visible) so the loop doesn't flash while tiles load.
                 layers.forEachIndexed { i, base ->
@@ -348,7 +352,7 @@ private fun Radar(lat: Double, lon: Double, radarBase: String, height: Dp, frame
         }
         Box(Modifier.align(Alignment.Center).size(8.dp).clip(CircleShape).background(Color.White))
         if (loop) {
-            val t = frames[frame].substringAfterLast('/').toLongOrNull()?.let { java.time.Instant.ofEpochSecond(it).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("h:mm a")) } ?: ""
+            val t = frames[frame].second.takeIf { it > 0 }?.let { java.time.Instant.ofEpochSecond(it).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("h:mm a")) } ?: ""
             Text(t, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.align(Alignment.TopEnd).padding(10.dp).clip(RoundedCornerShape(8.dp)).background(Color(0x99000000)).padding(horizontal = 8.dp, vertical = 3.dp))
             Row(Modifier.align(Alignment.BottomCenter).padding(10.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {

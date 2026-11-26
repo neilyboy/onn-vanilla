@@ -9,7 +9,7 @@ import org.json.JSONObject
 /** What Live TV shares with the home screen (see tv.vanilla.live.GlanceProvider). */
 data class GChan(val name: String, val number: String, val logo: String, val title: String, val progress: Float)
 data class GTeam(val abbr: String, val name: String, val logo: String, val color: String, val score: String)
-data class GGame(val id: String, val league: String, val state: String, val detail: String, val start: Long, val network: String, val away: GTeam, val home: GTeam)
+data class GGame(val id: String, val league: String, val state: String, val detail: String, val start: Long, val network: String, val away: GTeam, val home: GTeam, val fav: Boolean = false)
 data class GResume(val key: String, val title: String, val subtitle: String, val poster: String, val progress: Float)
 data class GVod(val id: String, val title: String, val poster: String, val series: Boolean)
 data class GCam(val name: String, val logo: String)
@@ -30,7 +30,7 @@ fun readGlance(ctx: Context): LiveGlance? = runCatching {
         r.optString("profile"),
         r.optJSONArray("onNow").objs().map { GChan(it.optString("name"), it.optString("number"), it.optString("logo"), it.optString("title"), it.optDouble("progress", 0.0).toFloat()) },
         r.optJSONArray("games").objs().map {
-            GGame(it.optString("id"), it.optString("league"), it.optString("state"), it.optString("detail"), it.optLong("start"), it.optString("network"), team(it.optJSONObject("away")), team(it.optJSONObject("home")))
+            GGame(it.optString("id"), it.optString("league"), it.optString("state"), it.optString("detail"), it.optLong("start"), it.optString("network"), team(it.optJSONObject("away")), team(it.optJSONObject("home")), it.optBoolean("fav"))
         },
         r.optJSONArray("resume").objs().map { GResume(it.optString("key"), it.optString("title"), it.optString("subtitle"), it.optString("poster"), it.optDouble("progress", 0.0).toFloat()) },
         r.optJSONArray("newVod").objs().map { GVod(it.optString("id"), it.optString("title"), it.optString("poster"), it.optBoolean("series")) },

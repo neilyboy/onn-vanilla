@@ -33,7 +33,7 @@ object Glance {
         val ga = JSONArray()
         shown.forEach { g ->
             ga.put(JSONObject().put("id", g.id).put("league", g.league).put("state", g.state).put("detail", g.detail).put("start", g.start)
-                .put("network", g.networks.firstOrNull() ?: "").put("away", team(g.away)).put("home", team(g.home)))
+                .put("network", g.networks.firstOrNull() ?: "").put("fav", g.away.abbr in favTeams || g.home.abbr in favTeams).put("away", team(g.away)).put("home", team(g.home)))
         }
         val ra = JSONArray()
         ResumeStore.all(ctx, profile).take(10).forEach { r ->

@@ -31,6 +31,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -65,7 +66,8 @@ fun LauncherScreen(
     onSettings: () -> Unit,
 ) {
     val cfg = activity.config.value ?: return
-    val theme = themeFor(cfg)
+    val look = activity.look.value
+    val theme = activity.theme
     val weather = activity.weather.value
     val walls = activity.wallpapers.value
     val homePresses = activity.homePresses.intValue
@@ -73,10 +75,18 @@ fun LauncherScreen(
     val lastInput = activity.lastInput.longValue
     var idle by activity.idle
     var showSetup by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
     var showPicker by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<AppEntry?>(null) }
+    var zoom by remember { mutableStateOf<String?>(null) }
+    var menuFor by remember { mutableStateOf<String?>(null) }
+    var edit by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+    var showAdd by remember { mutableStateOf(false) }
     val apps = activity.dock.value ?: cfg.apps
     val firstTile = remember { FocusRequester() }
+    val cells = activity.cells
+    val grid = activity.preset != "minimal" && cells.isNotEmpty()
+    val liveGame = if (look.gameDay && activity.preset != "minimal") activity.glance.value?.games?.firstOrNull { it.fav && it.state == "in" } else null
 
     LaunchedEffect(cfg.idleTimeoutSec, lastInput) {
         idle = false
@@ -97,8 +107,29 @@ fun LauncherScreen(
         Modifier
             .fillMaxSize()
             .onPreviewKeyEvent { ev ->
+                val e = edit
+                if (e != null) {
+                    val step = when (ev.key) {
+                        Key.DirectionLeft -> -1 to 0; Key.DirectionRight -> 1 to 0
+                        Key.DirectionUp -> 0 to -1; Key.DirectionDown -> 0 to 1
+                        else -> null
+                    }
+                    if (step != null) {
+                        if (ev.type == KeyEventType.KeyDown) activity.setCells(nudge(activity.cells, e.first, step.first, step.second, e.second))
+                        return@onPreviewKeyEvent true
+                    }
+                    if (ev.key == Key.DirectionCenter || ev.key == Key.Enter || ev.key == Key.NumPadEnter) {
+                        if (ev.type == KeyEventType.KeyUp) edit = e.copy(second = !e.second)
+                        return@onPreviewKeyEvent true
+                    }
+                    if (ev.key == Key.Back || ev.key == Key.Escape) {
+                        if (ev.type == KeyEventType.KeyUp) edit = null
+                        return@onPreviewKeyEvent true
+                    }
+                    return@onPreviewKeyEvent false
+                }
                 if (ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                if (ev.key == Key.Menu) { showSetup = true; true } else false
+                if (ev.key == Key.Menu) { showSettings = true; true } else false
             }
     ) {
         Background(cfg, theme, if (idle && activity.photos.value.isNotEmpty()) activity.photos.value else walls, idle && activity.photos.value.isNotEmpty())
@@ -107,54 +138,62 @@ fun LauncherScreen(
         Box(
             Modifier.fillMaxSize().background(
                 Brush.verticalGradient(
-                    0f to theme.scrim.copy(alpha = theme.scrim.alpha * 0.55f),
-                    0.35f to Color.Transparent,
-                    0.6f to Color.Transparent,
-                    1f to theme.scrim.copy(alpha = theme.scrim.alpha * 0.75f),
+                    0f to theme.scrim.copy(alpha = theme.scrim.alpha * 0.5f),
+                    0.3f to Color.Transparent,
+                    0.7f to Color.Transparent,
+                    1f to theme.scrim.copy(alpha = theme.scrim.alpha * 0.6f),
                 )
             )
         )
 
-        Column(Modifier.fillMaxSize().padding(horizontal = 56.dp, vertical = 40.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                AnimatedVisibility(visible = cfg.showSettings && !idle, enter = fadeIn(), exit = fadeOut()) {
-                    IconTile(Icons.Outlined.Settings, theme, size = 42.dp, onClick = { showSetup = true }, onLongClick = onSettings)
-                }
-                Spacer(Modifier.weight(1f))
-                Column(horizontalAlignment = Alignment.End) {
-                    ClockWeather(cfg, theme, weather, compact = idle)
-                    if (!idle && cfg.widget("calendar") == null) Agenda(activity.agenda.value, theme)
-                }
-            }
+        Column(Modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 32.dp)) {
+            if (idle) Row(Modifier.fillMaxWidth()) { Spacer(Modifier.weight(1f)); ClockWeather(cfg, theme, weather, compact = true) }
+            else Header(cfg, theme, weather, cfg.greeting) { if (!activity.widgetOn("calendar")) Agenda(activity.agenda.value, theme) }
             activity.alerts.value.firstOrNull()?.let { AlertBanner(it, activity.alerts.value.size, theme) }
-            if (cfg.layout == "minimal" || cfg.widgets.isEmpty() || idle) Spacer(Modifier.weight(1f))
-            else Row(Modifier.weight(1f).fillMaxWidth().padding(vertical = 16.dp)) {
-                val side = { pos: String -> cfg.widgets.any { it.pos == pos } }
-                if (side("left")) { WidgetColumn(activity, cfg, theme, "left", Modifier.width(380.dp).fillMaxHeight()); Spacer(Modifier.width(24.dp)) }
-                WidgetColumn(activity, cfg, theme, "center", Modifier.weight(1f).fillMaxHeight())
-                if (side("right")) { Spacer(Modifier.width(24.dp)); WidgetColumn(activity, cfg, theme, "right", Modifier.width(380.dp).fillMaxHeight()) }
+            when {
+                idle -> Spacer(Modifier.weight(1f))
+                liveGame != null -> GameDay(liveGame, activity, cfg, theme, null, Modifier.weight(1f).fillMaxWidth().padding(vertical = 18.dp), { zoom = it }, { menuFor = it })
+                grid -> WidgetGrid(activity, cfg, theme, cells, edit, Modifier.weight(1f).fillMaxWidth().padding(vertical = 18.dp), { zoom = it }, { menuFor = it })
+                else -> Spacer(Modifier.weight(1f))
             }
-            if (!idle && cfg.widget("news") == null) NewsStrip(activity.news.value, theme)
-            if (cfg.greeting.isNotBlank() && !idle) {
-                Text(cfg.greeting, color = theme.subText, fontSize = 16.sp, modifier = Modifier.padding(bottom = 12.dp, start = 4.dp))
+            if (!idle && !activity.widgetOn("news")) NewsStrip(activity.news.value, theme)
+            AnimatedVisibility(visible = !idle && edit == null, enter = fadeIn(tween(400)), exit = fadeOut(tween(800))) {
+                Dock(
+                    apps, activity, theme, look.iconDp.dp, firstTile, cfg.showSettings,
+                    onLaunch = onLaunch, onLongApp = { editing = it }, onAdd = { showPicker = true },
+                    onGear = { showSettings = true }, onGearLong = onSettings,
+                )
             }
-            AnimatedVisibility(visible = !idle, enter = fadeIn(tween(400)), exit = fadeOut(tween(1200))) {
-                Row(horizontalArrangement = Arrangement.spacedBy(20.dp), modifier = Modifier.padding(bottom = 8.dp)) {
-                    apps.forEachIndexed { i, app ->
-                        key(app.id) {
-                            AppTile(
-                                app, theme, activity,
-                                modifier = if (i == 0) Modifier.focusRequester(firstTile) else Modifier,
-                                onClick = { onLaunch(app) },
-                                onLongClick = { editing = app },
-                            )
-                        }
-                    }
-                    AddTile(theme, if (apps.isEmpty()) Modifier.focusRequester(firstTile) else Modifier) { showPicker = true }
+        }
+        edit?.let { EditBar(it.second, Modifier.align(Alignment.TopCenter).padding(top = 28.dp)) }
+
+        if (showSettings) HomeSettings(
+            activity,
+            onEditLayout = { showSettings = false; activity.cells.firstOrNull()?.let { edit = it.id to false } },
+            onAdvanced = { showSetup = true },
+            onClose = { showSettings = false },
+        )
+        zoom?.let { ZoomView(it, activity, cfg, theme) { zoom = null } }
+        menuFor?.let { id ->
+            WidgetMenu(id, theme, onDismiss = { menuFor = null }) { action ->
+                menuFor = null
+                when (action) {
+                    "zoom" -> zoom = id
+                    "edit" -> edit = id to false
+                    "remove" -> activity.setCells(activity.cells.filter { it.id != id })
+                    "add" -> showAdd = true
+                    "settings" -> showSettings = true
                 }
             }
         }
-
+        if (showAdd) AddWidgetDialog(activity.cells.map { it.id }, theme) { w ->
+            showAdd = false
+            if (w != null) {
+                val spot = firstFree(activity.cells, w.id, w.w, w.h)
+                if (spot == null) android.widget.Toast.makeText(activity, "No room left. Remove or shrink a widget first.", android.widget.Toast.LENGTH_SHORT).show()
+                else { activity.setCells(activity.cells + spot); edit = spot.id to false }
+            }
+        }
         if (showSetup) SetupDialog(activity, theme, onSettings) { showSetup = false }
         if (showPicker) AppPickerDialog(activity, theme) { picked ->
             showPicker = false
@@ -175,6 +214,7 @@ fun LauncherScreen(
                         "remove" -> list.removeAt(idx)
                         "reset" -> { activity.setDock(null); return@TileMenuDialog }
                         "icons" -> { activity.cycleIconStyle(); return@TileMenuDialog }
+                        "settings" -> { showSettings = true; return@TileMenuDialog }
                     }
                     activity.setDock(list)
                 },
@@ -191,6 +231,7 @@ private fun Background(cfg: LauncherConfig, theme: VanillaTheme, walls: List<Str
         else Brush.linearGradient(theme.background)
     )
     Box(base) {
+        if (cfg.wallpaperMode != "solid" && !frame) ThemeDecor(theme)
         if ((cfg.wallpaperMode != "photos" && !frame) || walls.isEmpty()) return@Box
         var index by remember(walls) { mutableIntStateOf(0) }
         LaunchedEffect(walls, cfg.wallpaperIntervalSec) {
@@ -308,58 +349,42 @@ internal fun tileColors(theme: VanillaTheme) = ClickableSurfaceDefaults.colors(
 )
 
 @Composable
-private fun IconTile(icon: ImageVector, theme: VanillaTheme, size: androidx.compose.ui.unit.Dp, onClick: () -> Unit, onLongClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        onLongClick = onLongClick,
-        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
-        colors = tileColors(theme),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = 1.1f),
-        border = ClickableSurfaceDefaults.border(
-            focusedBorder = Border(androidx.compose.foundation.BorderStroke(2.dp, theme.accent)),
-        ),
-        modifier = Modifier.size(size),
-    ) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Icon(icon, contentDescription = "Settings", modifier = Modifier.size(size * 0.5f))
-        }
+private fun DockItem(theme: VanillaTheme, size: androidx.compose.ui.unit.Dp, label: String, dim: Boolean, modifier: Modifier, onClick: () -> Unit, onLongClick: (() -> Unit)?, content: @Composable BoxScope.() -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = if (theme.style == "neon") RoundedCornerShape(8.dp) else RoundedCornerShape(size * 0.26f)
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(size + 24.dp)) {
+        Surface(
+            onClick = onClick,
+            onLongClick = onLongClick,
+            shape = ClickableSurfaceDefaults.shape(shape),
+            colors = tileColors(theme),
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.15f),
+            border = ClickableSurfaceDefaults.border(focusedBorder = Border(androidx.compose.foundation.BorderStroke(2.dp, theme.accent), shape = shape)),
+            glow = ClickableSurfaceDefaults.glow(focusedGlow = if (theme.glow.alpha > 0f) Glow(theme.glow, 14.dp) else Glow.None),
+            modifier = modifier.size(size).onFocusChanged { focused = it.isFocused },
+        ) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center, content = content) }
+        Text(
+            label, color = if (dim) theme.subText else theme.text, fontSize = 12.sp, maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 8.dp).alpha(if (focused) 1f else 0f),
+        )
     }
 }
 
 @Composable
-private fun AppTile(app: AppEntry, theme: VanillaTheme, activity: MainActivity, modifier: Modifier, onClick: () -> Unit, onLongClick: () -> Unit) {
+internal fun GearTile(theme: VanillaTheme, size: androidx.compose.ui.unit.Dp, onClick: () -> Unit, onLongClick: () -> Unit) =
+    DockItem(theme, size, "Settings", false, Modifier, onClick, onLongClick) { Icon(Icons.Outlined.Settings, "Settings", Modifier.size(size * 0.45f)) }
+
+@Composable
+internal fun AppTile(app: AppEntry, theme: VanillaTheme, activity: MainActivity, size: androidx.compose.ui.unit.Dp, modifier: Modifier, onClick: () -> Unit, onLongClick: () -> Unit) {
     val installed = remember(app) { activity.isInstalled(app) }
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Surface(
-            onClick = onClick,
-            onLongClick = onLongClick,
-            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(20.dp)),
-            colors = tileColors(theme),
-            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
-            border = ClickableSurfaceDefaults.border(
-                focusedBorder = Border(androidx.compose.foundation.BorderStroke(3.dp, theme.accent)),
-            ),
-            glow = ClickableSurfaceDefaults.glow(focusedGlow = Glow(theme.accent.copy(alpha = 0.45f), 18.dp)),
-            modifier = modifier.size(104.dp),
-        ) {
-            val drawable: Drawable? = remember(app) {
-                if (app.iconUrl.isNotBlank()) null
-                else app.packages.firstNotNullOfOrNull { runCatching { activity.packageManager.getApplicationIcon(it) }.getOrNull() }
-            }
-            if (drawable != null) {
-                ThemedIcon(drawable, activity.iconStyle, theme.accent, app.label, Modifier.fillMaxSize().padding(6.dp).clip(RoundedCornerShape(16.dp)))
-            } else {
-                Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-                    AppIcon(app, activity)
-                }
-            }
+    DockItem(theme, size, app.label + if (installed) "" else " (not installed)", !installed, modifier, onClick, onLongClick) {
+        val drawable: Drawable? = remember(app) {
+            if (app.iconUrl.isNotBlank()) null
+            else app.packages.firstNotNullOfOrNull { runCatching { activity.packageManager.getApplicationIcon(it) }.getOrNull() }
         }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            app.label + if (installed) "" else " (not installed)",
-            color = if (installed) theme.text else theme.subText,
-            fontSize = 14.sp,
-        )
+        if (drawable != null) ThemedIcon(drawable, activity.iconStyle, theme.accent, app.label, Modifier.fillMaxSize().padding(size * 0.06f).clip(RoundedCornerShape(size * 0.2f)))
+        else Box(Modifier.fillMaxSize().padding(size * 0.22f), contentAlignment = Alignment.Center) { AppIcon(app, activity) }
     }
 }
 
@@ -425,34 +450,11 @@ private fun SetupDialog(activity: MainActivity, theme: VanillaTheme, onAndroidSe
 }
 
 @Composable
-private fun AddTile(theme: VanillaTheme, modifier: Modifier, onClick: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Surface(
-            onClick = onClick,
-            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(28.dp)),
-            colors = ClickableSurfaceDefaults.colors(
-                containerColor = theme.tile.copy(alpha = theme.tile.alpha * 0.4f),
-                focusedContainerColor = theme.tileFocused,
-                contentColor = theme.subText,
-                focusedContentColor = theme.text,
-            ),
-            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
-            border = ClickableSurfaceDefaults.border(
-                focusedBorder = Border(androidx.compose.foundation.BorderStroke(3.dp, theme.accent)),
-            ),
-            modifier = modifier.size(104.dp),
-        ) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Icon(Icons.Outlined.Add, "Add app", Modifier.size(36.dp))
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        Text("Add app", color = theme.subText, fontSize = 14.sp)
-    }
-}
+internal fun AddTile(theme: VanillaTheme, size: androidx.compose.ui.unit.Dp, modifier: Modifier, onClick: () -> Unit) =
+    DockItem(theme, size, "Add app", false, modifier, onClick, null) { Icon(Icons.Outlined.Add, "Add app", Modifier.size(size * 0.4f)) }
 
 @Composable
-private fun DialogCard(content: @Composable ColumnScope.() -> Unit) {
+internal fun DialogCard(content: @Composable ColumnScope.() -> Unit) {
     Column(
         Modifier.width(560.dp).clip(RoundedCornerShape(24.dp)).background(Color(0xF0181A20)).padding(28.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -461,7 +463,7 @@ private fun DialogCard(content: @Composable ColumnScope.() -> Unit) {
 }
 
 @Composable
-private fun MenuRow(label: String, theme: VanillaTheme, modifier: Modifier = Modifier, leading: (@Composable () -> Unit)? = null, onClick: () -> Unit) {
+internal fun MenuRow(label: String, theme: VanillaTheme, modifier: Modifier = Modifier, leading: (@Composable () -> Unit)? = null, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(14.dp)),
@@ -524,7 +526,8 @@ private fun TileMenuDialog(app: AppEntry, theme: VanillaTheme, iconStyle: String
                 if (canRight) add("right" to "Move right")
                 add("remove" to "Remove from Home")
                 add("icons" to "Icon style: $iconStyle")
-                add("reset" to "Reset Home to default")
+                add("reset" to "Reset apps to default")
+                add("settings" to "Home settings")
                 add("cancel" to "Cancel")
             }
             rows.forEachIndexed { i, (id, label) ->

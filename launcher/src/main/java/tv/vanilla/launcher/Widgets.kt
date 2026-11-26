@@ -39,6 +39,28 @@ import kotlin.math.floor
 import kotlin.math.ln
 import kotlin.math.tan
 
+/** Inside a grid tile: cards are drawn but not focusable (the tile itself takes focus; OK zooms it). */
+val LocalPreview = staticCompositionLocalOf { false }
+/** Inside a grid tile or zoom view, which draw the widget's title themselves. */
+val LocalFramed = staticCompositionLocalOf { false }
+val LocalZoom = staticCompositionLocalOf { false }
+
+/** True when [id] has nothing to show right now. */
+fun widgetEmpty(id: String, a: MainActivity): Boolean {
+    val g = a.glance.value
+    return when (id) {
+        "onnow" -> g?.onNow.isNullOrEmpty()
+        "scores" -> g?.games.isNullOrEmpty()
+        "resume" -> g?.resume.isNullOrEmpty()
+        "newvod" -> g?.newVod.isNullOrEmpty()
+        "news" -> a.news.value.isEmpty()
+        "ha" -> a.ha.value.none { it.domain != "camera" }
+        "cameras" -> a.ha.value.none { it.domain == "camera" } && g?.cameras.isNullOrEmpty()
+        "weather" -> a.weather.value == null
+        else -> false
+    }
+}
+
 /** Widgets placed at [pos] (left, center or right), in the order the setup app listed them. */
 @Composable
 fun WidgetColumn(activity: MainActivity, cfg: LauncherConfig, theme: VanillaTheme, pos: String, modifier: Modifier) {
@@ -48,7 +70,7 @@ fun WidgetColumn(activity: MainActivity, cfg: LauncherConfig, theme: VanillaThem
 }
 
 @Composable
-private fun Widget(id: String, activity: MainActivity, cfg: LauncherConfig, theme: VanillaTheme, wide: Boolean) {
+fun Widget(id: String, activity: MainActivity, cfg: LauncherConfig, theme: VanillaTheme, wide: Boolean) {
     val g = activity.glance.value
     when (id) {
         "onnow" -> g?.onNow?.takeIf { it.isNotEmpty() }?.let { OnNow(it, theme) }
@@ -64,15 +86,22 @@ private fun Widget(id: String, activity: MainActivity, cfg: LauncherConfig, them
 }
 
 @Composable
-private fun Title(text: String, theme: VanillaTheme) =
+private fun Title(text: String, theme: VanillaTheme) {
+    if (LocalFramed.current) return
     Text(text.uppercase(), color = theme.subText, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
+}
 
 @Composable
 private fun Panel(theme: VanillaTheme, content: @Composable ColumnScope.() -> Unit) =
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(theme.scrim.copy(alpha = 0.35f)).padding(14.dp), content = content)
+    if (LocalFramed.current) Column(Modifier.fillMaxWidth(), content = content)
+    else Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(theme.scrim.copy(alpha = 0.35f)).padding(14.dp), content = content)
 
 @Composable
 private fun Card(theme: VanillaTheme, width: Dp, height: Dp, onClick: () -> Unit, content: @Composable BoxScope.() -> Unit) {
+    if (LocalPreview.current) {
+        Box(Modifier.size(width, height).clip(RoundedCornerShape(12.dp)).background(theme.tile), content = content)
+        return
+    }
     Surface(
         onClick = onClick,
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(12.dp)),
@@ -116,7 +145,7 @@ private fun OnNow(list: List<GChan>, theme: VanillaTheme) {
     }
 }
 
-private fun teamColor(hex: String, fallback: Color) = runCatching { Color(android.graphics.Color.parseColor("#" + hex.removePrefix("#"))) }.getOrDefault(fallback)
+internal fun teamColor(hex: String, fallback: Color) = runCatching { Color(android.graphics.Color.parseColor("#" + hex.removePrefix("#"))) }.getOrDefault(fallback)
 
 @Composable
 private fun Scores(list: List<GGame>, theme: VanillaTheme) {
@@ -272,7 +301,7 @@ private fun HourlyRadar(w: Weather, radar: String?, cfg: LauncherConfig, theme: 
         }
         if (radar != null && cfg.hasWeather) {
             Spacer(Modifier.height(10.dp))
-            Radar(cfg.latitude, cfg.longitude, radar, if (wide) 220.dp else 150.dp)
+            Radar(cfg.latitude, cfg.longitude, radar, if (LocalZoom.current) 520.dp else if (wide) 220.dp else 150.dp)
             Text("Radar: RainViewer · Map: Esri", color = theme.subText.copy(alpha = 0.6f), fontSize = 8.sp, modifier = Modifier.padding(top = 4.dp))
         }
     }

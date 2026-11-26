@@ -36,10 +36,65 @@ class MainActivity : ComponentActivity() {
     val radar = mutableStateOf<String?>(null)
     val ha = mutableStateOf<List<HaEntity>>(emptyList())
     val photos = mutableStateOf<List<String>>(emptyList())
+    val wallColor = mutableStateOf<androidx.compose.ui.graphics.Color?>(null)
+    val look = mutableStateOf(HomeLook())
+    private val localCells = mutableStateOf<List<Cell>?>(null)
+    private val slotCells = mutableStateOf<Map<String, List<Cell>>>(emptyMap())
+    val period = mutableStateOf(periodNow())
+
+    private val homePrefs get() = getSharedPreferences("home", MODE_PRIVATE)
+
+    val theme get() = config.value.let { c -> themeFor(look.value.theme ?: c?.themeName ?: "glass", look.value.accent ?: c?.accent ?: "", wallColor.value) }
+    val preset get() = look.value.preset ?: if (config.value?.layout.let { it == null || it == "minimal" }) "minimal" else "grid"
+
+    /** The layout in use: this part of the day's (when time-of-day layouts are on), the one edited on the TV, or the setup app's. */
+    val cells: List<Cell> get() {
+        if (preset == "minimal") return emptyList()
+        if (look.value.timeOfDay) slotCells.value[period.value]?.let { return it }
+        return localCells.value ?: defaultCells(config.value?.widgets.orEmpty())
+    }
+
+    fun widgetOn(id: String) = cells.any { it.id == id }
+
+    fun setCells(list: List<Cell>) {
+        if (look.value.timeOfDay) {
+            slotCells.value = slotCells.value + (period.value to list)
+            homePrefs.edit().putString("slots", org.json.JSONObject(slotCells.value.mapValues { cellsToJson(it.value) }).toString()).apply()
+        } else {
+            localCells.value = list
+            homePrefs.edit().putString("cells", cellsToJson(list).toString()).apply()
+        }
+        lifecycleScope.launch { config.value?.let { refreshFeeds(it) } }
+    }
+
+    fun resetLayout() {
+        localCells.value = null; slotCells.value = emptyMap()
+        homePrefs.edit().remove("cells").remove("slots").apply()
+    }
+
+    fun setLook(l: HomeLook) {
+        look.value = l
+        l.save(homePrefs)
+        if (l.theme == "wallpaper") lifecycleScope.launch { updateWallColor() }
+    }
+
+    private suspend fun updateWallColor() {
+        val url = (wallpapers.value + photos.value).firstOrNull() ?: return
+        wallColor.value = withContext(Dispatchers.IO) { averageColor(this@MainActivity, url) }
+    }
+
+    private fun loadHome() {
+        val p = homePrefs
+        look.value = HomeLook.load(p)
+        localCells.value = p.getString("cells", null)?.let { runCatching { cellsFromJson(org.json.JSONArray(it)) }.getOrNull() }
+        slotCells.value = p.getString("slots", null)?.let { t ->
+            runCatching { org.json.JSONObject(t).let { o -> o.keys().asSequence().associateWith { k -> cellsFromJson(o.optJSONArray(k)) } } }.getOrNull()
+        } ?: emptyMap()
+    }
 
     private suspend fun haLoop() {
         while (true) {
-            config.value?.let { c -> if (c.widget("ha") != null || c.widget("cameras") != null) ha.value = withContext(Dispatchers.IO) { fetchHa(c) } }
+            config.value?.let { c -> if (widgetOn("ha") || widgetOn("cameras")) ha.value = withContext(Dispatchers.IO) { fetchHa(c) } }
             delay(if (idle.value) 120_000L else 20_000L)
         }
     }
@@ -55,16 +110,17 @@ class MainActivity : ComponentActivity() {
 
     private suspend fun glanceLoop() {
         while (true) {
-            if (config.value?.layout.let { it != null && it != "minimal" }) glance.value = withContext(Dispatchers.IO) { readGlance(this@MainActivity) }
+            glance.value = withContext(Dispatchers.IO) { readGlance(this@MainActivity) }
+            period.value = periodNow()
             delay(30_000L)
         }
     }
 
     private suspend fun refreshFeeds(c: LauncherConfig) = withContext(Dispatchers.IO) {
         agenda.value = if (c.calendars.isEmpty()) emptyList() else fetchCalendar(c.calendars)
-        news.value = if (c.newsFeeds.isEmpty()) emptyList() else fetchNews(c.newsFeeds, if (c.widget("news") != null) 12 else 8)
+        news.value = if (c.newsFeeds.isEmpty()) emptyList() else fetchNews(c.newsFeeds, if (widgetOn("news")) 12 else 8)
         alerts.value = if (c.alerts && c.hasWeather) fetchAlerts(c.latitude, c.longitude) else emptyList()
-        if (c.widget("weather") != null) radar.value = fetchRadarBase()
+        if (widgetOn("weather")) radar.value = fetchRadarBase()
     }
 
     private suspend fun feedLoop() {
@@ -122,6 +178,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         configRepo = ConfigRepository(this)
         weatherRepo = WeatherRepository(this)
+        loadHome()
         applyIntent(intent)
         dock.value = configRepo.localDock
         if (config.value == null) config.value = configRepo.loadCached()
@@ -159,10 +216,13 @@ class MainActivity : ComponentActivity() {
         intent ?: return false
         intent.getStringExtra("config_b64")?.let { b64 ->
             val text = runCatching { String(Base64.decode(b64, Base64.DEFAULT)) }.getOrNull()
+            val before = config.value?.widgets?.map { it.id }?.toSet()
             text?.let { configRepo.applyInline(it) }?.let {
-                // Settings sent from the setup app replace a style picked earlier on the box.
+                // Settings sent from the setup app replace the look picked earlier on the box; a TV-edited layout stays unless the widget list changed.
                 iconOverride.value = null
-                getSharedPreferences("home", MODE_PRIVATE).edit().remove("icon_style").apply()
+                homePrefs.edit().remove("icon_style").apply()
+                setLook(look.value.copy(theme = null, accent = null, preset = null))
+                if (before != null && before != it.widgets.map { w -> w.id }.toSet()) resetLayout()
                 config.value = it
                 lifecycleScope.launch { reloadWallpapers(it); refreshWeather(it); refreshFeeds(it) }
             }
@@ -235,12 +295,14 @@ class MainActivity : ComponentActivity() {
 
     private suspend fun reloadWallpapers(c: LauncherConfig) {
         photos.value = if (c.photos.isEmpty()) emptyList() else withContext(Dispatchers.IO) { fetchPhotos(c.photos) }
+        if ((look.value.theme ?: c.themeName) == "wallpaper") updateWallColor()
         if (c.wallpaperMode != "photos" || c.wallpaperManifestUrl.isBlank()) {
             wallpapers.value = emptyList()
             return
         }
         val list = withContext(Dispatchers.IO) { fetchWallpaperList(c.wallpaperManifestUrl) }
         if (list.isNotEmpty()) wallpapers.value = list.shuffled()
+        if ((look.value.theme ?: c.themeName) == "wallpaper") updateWallColor()
     }
 
     fun isInstalled(app: AppEntry): Boolean = app.packages.any { launchIntentFor(it) != null }
@@ -258,7 +320,7 @@ class MainActivity : ComponentActivity() {
         runCatching { startActivity(intent) }
     }
 
-    private fun openSettings() {
+    fun openSettings() {
         runCatching { startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
     }
 }

@@ -548,6 +548,7 @@ private fun GuideTab(a: MainActivity, c: LiveConfig?, accent: Color, favoritesOn
     LaunchedEffect(hovered) { val h = hovered ?: return@LaunchedEffect; delay(400); group = h }
     val nowFocus = remember { FocusRequester() }
     val netFocus = remember { FocusRequester() }
+    val stateFocus = remember { FocusRequester() }
     // Down from the chips lands on what's on now in the first row, not wherever the cursor lines up.
     val downToNow = Modifier.onPreviewKeyEvent { ev ->
         if (ev.key == Key.DirectionDown && ev.type == KeyEventType.KeyDown && rows.isNotEmpty()) runCatching { nowFocus.requestFocus(); true }.getOrDefault(false) else false
@@ -596,8 +597,8 @@ private fun GuideTab(a: MainActivity, c: LiveConfig?, accent: Color, favoritesOn
             }
         }
         if (selected == LOCALS_NATIONAL) {
-            SubChips(listOf<String?>(null) + networks, locNet, { it ?: "All networks" }, accent, Modifier, first = netFocus) { locNet = it }
-            SubChips(listOf<String?>(null) + states, locState, { it ?: "All states" }, accent, downToNow, nowFocus.takeIf { rows.isNotEmpty() }) { locState = it }
+            SubChips(listOf<String?>(null) + networks, locNet, { it ?: "All networks" }, accent, Modifier, down = stateFocus, first = netFocus) { locNet = it }
+            SubChips(listOf<String?>(null) + states, locState, { it ?: "All states" }, accent, downToNow, nowFocus.takeIf { rows.isNotEmpty() }, first = stateFocus) { locState = it }
         }
         // Detail strip for the focused programme
         Column(Modifier.fillMaxWidth().height(92.dp).padding(horizontal = 48.dp, vertical = 10.dp)) {

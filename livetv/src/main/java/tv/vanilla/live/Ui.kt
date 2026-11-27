@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
@@ -546,6 +547,7 @@ private fun GuideTab(a: MainActivity, c: LiveConfig?, accent: Color, favoritesOn
     var hovered by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(hovered) { val h = hovered ?: return@LaunchedEffect; delay(400); group = h }
     val nowFocus = remember { FocusRequester() }
+    val netFocus = remember { FocusRequester() }
     // Down from the chips lands on what's on now in the first row, not wherever the cursor lines up.
     val downToNow = Modifier.onPreviewKeyEvent { ev ->
         if (ev.key == Key.DirectionDown && ev.type == KeyEventType.KeyDown && rows.isNotEmpty()) runCatching { nowFocus.requestFocus(); true }.getOrDefault(false) else false
@@ -581,7 +583,8 @@ private fun GuideTab(a: MainActivity, c: LiveConfig?, accent: Color, favoritesOn
                 val sel = g == selected
                 Surface(
                     onClick = { group = g },
-                    modifier = (if (sel) Modifier.focusRequester(chipFocus) else Modifier).onFocusChanged { if (it.isFocused) hovered = g },
+                    modifier = (if (sel) Modifier.focusRequester(chipFocus) else Modifier).onFocusChanged { if (it.isFocused) hovered = g }
+                        .focusProperties { if (selected == LOCALS_NATIONAL) down = netFocus else if (rows.isNotEmpty()) down = nowFocus },
                     shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
                     colors = ClickableSurfaceDefaults.colors(
                         containerColor = if (sel) accent.copy(alpha = 0.85f) else Palette.card,
@@ -593,8 +596,8 @@ private fun GuideTab(a: MainActivity, c: LiveConfig?, accent: Color, favoritesOn
             }
         }
         if (selected == LOCALS_NATIONAL) {
-            SubChips(listOf<String?>(null) + networks, locNet, { it ?: "All networks" }, accent, Modifier) { locNet = it }
-            SubChips(listOf<String?>(null) + states, locState, { it ?: "All states" }, accent, downToNow) { locState = it }
+            SubChips(listOf<String?>(null) + networks, locNet, { it ?: "All networks" }, accent, Modifier, first = netFocus) { locNet = it }
+            SubChips(listOf<String?>(null) + states, locState, { it ?: "All states" }, accent, downToNow, nowFocus.takeIf { rows.isNotEmpty() }) { locState = it }
         }
         // Detail strip for the focused programme
         Column(Modifier.fillMaxWidth().height(92.dp).padding(horizontal = 48.dp, vertical = 10.dp)) {
@@ -637,13 +640,14 @@ private val LOCAL_NET_RE = Regex(""":\s*(ABC|CBS|NBC|FOX|PBS|CW|My|IND)\b""")
 fun localNetwork(name: String): String? = LOCAL_NET_RE.find(name)?.groupValues?.get(1)
 
 @Composable
-private fun <T> SubChips(values: List<T>, current: T, label: (T) -> String, accent: Color, modifier: Modifier, onPick: (T) -> Unit) {
+private fun <T> SubChips(values: List<T>, current: T, label: (T) -> String, accent: Color, modifier: Modifier, down: FocusRequester? = null, first: FocusRequester? = null, onPick: (T) -> Unit) {
     LazyRow(modifier.padding(top = 8.dp), contentPadding = PaddingValues(horizontal = 48.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(values) { v ->
+        itemsIndexed(values) { i, v ->
             val sel = v == current
             Surface(
                 onClick = { onPick(v) },
-                modifier = Modifier.onFocusChanged { if (it.isFocused) onPick(v) },
+                modifier = (if (i == 0 && first != null) Modifier.focusRequester(first) else Modifier)
+                    .onFocusChanged { if (it.isFocused) onPick(v) }.focusProperties { if (down != null) this.down = down },
                 shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
                 colors = ClickableSurfaceDefaults.colors(
                     containerColor = if (sel) accent.copy(alpha = 0.6f) else Palette.card, focusedContainerColor = Palette.text,

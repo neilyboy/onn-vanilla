@@ -136,8 +136,10 @@ object Updates {
 class UpdateReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
+            val pending = goAsync()
             HomeButtonService.heal(ctx)
             Rooms.get(ctx).start()
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ pending.finish() }, 2000)
             return
         }
         when (intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {

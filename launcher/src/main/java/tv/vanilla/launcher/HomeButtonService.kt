@@ -93,11 +93,14 @@ class HomeButtonService : AccessibilityService() {
             val r = ctx.contentResolver
             val others = (android.provider.Settings.Secure.getString(r, "enabled_accessibility_services") ?: "")
                 .split(':').filter { it.isNotBlank() && it != "null" && it != id }
-            runCatching {
-                android.provider.Settings.Secure.putString(r, "enabled_accessibility_services", others.joinToString(":").ifEmpty { null })
-                android.provider.Settings.Secure.putString(r, "enabled_accessibility_services", (others + id).joinToString(":"))
-                android.provider.Settings.Secure.putInt(r, "accessibility_enabled", 1)
-            }
+            // Off, then on a second later: Android doesn't rebind a service marked crashed (e.g. after an update) if the setting flips back instantly.
+            runCatching { android.provider.Settings.Secure.putString(r, "enabled_accessibility_services", others.joinToString(":").ifEmpty { null }) }
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                runCatching {
+                    android.provider.Settings.Secure.putString(r, "enabled_accessibility_services", (others + id).joinToString(":"))
+                    android.provider.Settings.Secure.putInt(r, "accessibility_enabled", 1)
+                }
+            }, 1000)
         }
 
         val STOCK_HOMES = listOf(

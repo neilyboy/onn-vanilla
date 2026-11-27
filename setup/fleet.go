@@ -156,16 +156,21 @@ func allowSelfUpdate(a ADB) {
 
 // homeButtonOn (re)enables the accessibility service that sends the Home button to Vanilla Home.
 func homeButtonOn(a ADB) {
+	// Always off then on: after an update Android marks the old service crashed and only rebinds on a change.
 	enabled, _ := a.sh("settings", "get", "secure", "enabled_accessibility_services")
-	enabled = strings.TrimSpace(enabled)
-	if !strings.Contains(enabled, homeButtonService) {
-		if enabled == "" || enabled == "null" {
-			enabled = homeButtonService
-		} else {
-			enabled += ":" + homeButtonService
+	var others []string
+	for _, s := range strings.Split(strings.TrimSpace(enabled), ":") {
+		if s != "" && s != "null" && s != homeButtonService {
+			others = append(others, s)
 		}
-		_, _ = a.sh("settings", "put", "secure", "enabled_accessibility_services", enabled)
 	}
+	off := strings.Join(others, ":")
+	if off == "" {
+		off = "null"
+	}
+	_, _ = a.sh("settings", "put", "secure", "enabled_accessibility_services", off)
+	time.Sleep(time.Second)
+	_, _ = a.sh("settings", "put", "secure", "enabled_accessibility_services", strings.Join(append(others, homeButtonService), ":"))
 	_, _ = a.sh("settings", "put", "secure", "accessibility_enabled", "1")
 	_, _ = a.sh("pm", "grant", launcherPkg, "android.permission.WRITE_SECURE_SETTINGS")
 }

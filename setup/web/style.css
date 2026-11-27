@@ -60,3 +60,8 @@ pre{background:#07080b;border:1px solid var(--line);border-radius:12px;padding:1
 @media(max-width:800px){.profile{grid-template-columns:1fr}}
 label.check{display:flex;gap:8px;align-items:center;flex-direction:row}
 textarea{width:100%;box-sizing:border-box;background:var(--card,#1b1e26);color:var(--text);border:1px solid #333a48;border-radius:8px;padding:8px;font:inherit;font-size:13px}
+table.fleet{width:100%;border-collapse:collapse;margin:8px 0;font-size:14px;color:var(--text,#fff)}
+table.fleet th{text-align:left;font-weight:600;color:var(--sub);padding:6px 8px}
+table.fleet td{padding:8px;border-top:1px solid rgba(255,255,255,.08);vertical-align:top}
+table.fleet .warn{color:#ffb4a0}
+.small{font-size:13px}

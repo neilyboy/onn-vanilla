@@ -120,6 +120,7 @@ func registerAPI(mux *http.ServeMux) {
 			writeErr(w, err)
 			return
 		}
+		o.UpdateURL = updateBase(r)
 		stream(w, func(log logger) error { return provision(o, loadSetup(), log) })
 	})
 	mux.HandleFunc("POST /api/box/restore", func(w http.ResponseWriter, r *http.Request) {

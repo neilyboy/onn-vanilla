@@ -43,7 +43,7 @@ function go(step) {
   $$(".step").forEach(s => s.classList.toggle("active", s.id === step));
   $$("#nav a").forEach(a => a.classList.toggle("active", a.dataset.step === step));
   window.scrollTo(0, 0);
-  if (step === "box") checkAdb();
+  if (step === "box") { checkAdb(); renderFleet(); }
 }
 
 // Starting points for the layout picker; each widget can still be changed afterwards.
@@ -244,6 +244,36 @@ async function checkAdb() {
   } catch {}
   renderRecent();
 }
+async function renderFleet() {
+  const ips = S.boxes || [];
+  const el = $("#fleet-list");
+  if (!ips.length) { el.textContent = "No boxes yet. Connect one below."; return; }
+  el.textContent = "Checking " + ips.length + " box" + (ips.length > 1 ? "es" : "") + "…";
+  try {
+    const r = await api("/api/boxes/status", { ips });
+    const v = x => x ? esc(x.versionName) : "—";
+    el.innerHTML = `<table class="fleet"><tr><th>TV</th><th>Vanilla Home</th><th>Live TV</th><th></th><th></th></tr>` + r.boxes.map(b => `<tr>
+      <td><b>${esc(b.name || b.ip)}</b><br><small class="muted">${esc(b.ip)}</small></td>
+      <td>${v(b.launcher)}</td><td>${v(b.livetv)}</td>
+      <td>${b.error ? `<span class="warn">${esc(b.error)}</span>` : !b.launcher ? "Not set up" : b.behind ? "<b>Update available</b>" : "Up to date"}</td>
+      <td class="small">${b.launcher ? `<a href="#" data-save="${esc(b.ip)}" data-name="${esc(b.name)}">Save its Home</a>${r.template ? ` · <a href="#" data-apply="${esc(b.ip)}">Give it the saved Home</a>` : ""} · ` : ""}<a href="#" data-forget="${esc(b.ip)}">Forget</a></td></tr>`).join("") +
+      `</table><p class="muted small">Newest apps in this wizard: Vanilla Home ${v(r.bundled.launcher)}, Live TV ${v(r.bundled.livetv)}.</p>`;
+    renderTemplate(r.template);
+    $$("#fleet-list [data-save]").forEach(a => a.onclick = async e => {
+      e.preventDefault();
+      try { renderTemplate(await api("/api/home-template/save", { ip: a.dataset.save, name: a.dataset.name })); renderFleet(); }
+      catch (err) { alert(err.message); }
+    });
+    $$("#fleet-list [data-apply]").forEach(a => a.onclick = e => { e.preventDefault(); confirm("Replace this TV's theme, layout and dock with the saved Home?") && run("/api/home-template/apply", { ips: [a.dataset.apply] }); });
+    $$("#fleet-list [data-forget]").forEach(a => a.onclick = e => { e.preventDefault(); S.boxes = ips.filter(x => x !== a.dataset.forget); save(); renderRecent(); renderFleet(); });
+  } catch (e) { el.textContent = "Couldn't check: " + e.message; }
+}
+function renderTemplate(t) {
+  const st = $("#tpl-status");
+  if (!t) { st.innerHTML = "No Home saved. Use <b>Save its Home</b> on a TV you've set up the way you like; new and reset TVs then get it."; return; }
+  st.innerHTML = `Saved Home: from <b>${esc(t.from)}</b>, ${esc(new Date(t.savedAt).toLocaleString())}. New boxes and resets get it. <a href="#" id="tpl-clear">Clear</a>`;
+  $("#tpl-clear").onclick = async e => { e.preventDefault(); await api("/api/home-template/clear", {}); renderFleet(); };
+}
 function renderRecent() {
   $("#recent").innerHTML = (S.boxes || []).map(ip => `<span class="chip" data-ip="${esc(ip)}">${esc(ip)}</span>`).join("");
   $$("#recent .chip").forEach(c => c.onclick = () => { $("#box-ip").value = c.dataset.ip; inspect(); });
@@ -258,7 +288,7 @@ async function inspect() {
   log.textContent = `Connecting to ${ip}… if the TV asks "Allow USB debugging?", tick Always allow and press OK.\n`;
   try {
     const b = await api("/api/box/inspect", { ip });
-    S.boxes = [ip, ...(S.boxes || []).filter(x => x !== ip)].slice(0, 8); save(); renderRecent();
+    S.boxes = [ip, ...(S.boxes || []).filter(x => x !== ip)].slice(0, 30); save(); renderRecent(); renderFleet();
     log.classList.add("hidden");
     $("#box-card").innerHTML = `<div class="kv">
       <span>Box</span><span><b>${esc(b.maker)} ${esc(b.model)}</b></span>
@@ -298,7 +328,7 @@ function provisionBody(extra) {
     ip: $("#box-ip").value.trim(),
     remove: $$("#removable input:checked").map(i => i.value),
     removePlayStore: $("#rm-store").checked,
-    reboot: $("#reboot").checked, ...extra,
+    reboot: $("#reboot").checked, resetHome: $("#reset-home").checked, ...extra,
   };
 }
 
@@ -317,6 +347,12 @@ async function init() {
   $("#team-league").onchange = renderTeams;
   $("#team-filter").oninput = renderTeams;
   $("#inspect").onclick = inspect;
+  $("#fleet-refresh").onclick = renderFleet;
+  $("#fleet-update").onclick = async () => {
+    if (!(S.boxes || []).length) return;
+    await run("/api/boxes/update", { ips: S.boxes, settings: $("#fleet-settings").checked });
+    renderFleet();
+  };
   $("#vod-status").textContent = S.xcUser ? "✓ On (sent to the box with your settings)" : "";
   $("#vod-enable").onclick = async () => {
     const st = $("#vod-status"); st.textContent = "Setting up…";

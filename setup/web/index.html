@@ -169,6 +169,17 @@
   <!-- 4. Box -->
   <section id="box" class="step">
     <h1>Set up a box</h1>
+    <div class="card" id="fleet">
+      <h3>Your boxes</h3>
+      <p class="muted">Every box you've connected from here. Updating installs the newest apps on each one and, if ticked, your current settings. Each TV keeps its own theme, layout and dock.</p>
+      <div id="fleet-list" class="muted">No boxes yet. Connect one below.</div>
+      <label class="toggle"><input type="checkbox" id="fleet-settings" checked> Also send my current settings</label>
+      <div class="row actions">
+        <button id="fleet-update" class="primary">Update all boxes</button>
+        <button id="fleet-refresh">Check versions</button>
+      </div>
+      <p id="tpl-status" class="muted"></p>
+    </div>
     <div class="tabs" id="adb-mode">
       <button class="tab active" data-mode="wifi">Google TV / Android 11+ (wireless debugging)</button>
       <button class="tab" data-mode="usb">Older Android TV (USB debugging)</button>
@@ -209,6 +220,7 @@
       <div id="removable" class="checks"></div>
       <label class="toggle warn"><input type="checkbox" id="rm-store"> Also remove Play Store (you won't be able to install apps from the TV)</label>
       <label class="toggle"><input type="checkbox" id="reboot" checked> Reboot when done</label>
+      <label class="toggle"><input type="checkbox" id="reset-home"> Reset this TV's Home (theme, layout, dock) <span class="muted">to your saved Home, or the wizard's defaults. Off keeps what's set on the TV.</span></label>
       <div class="row actions">
         <button id="dry" >Dry run</button>
         <button id="go" class="primary">Set up this box</button>

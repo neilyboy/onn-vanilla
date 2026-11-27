@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -128,6 +129,8 @@ type ProvisionOpts struct {
 	RemovePlayStore bool     `json:"removePlayStore"`
 	Reboot          bool     `json:"reboot"`
 	ConfigOnly      bool     `json:"configOnly"`
+	ResetHome       bool     `json:"resetHome"`
+	UpdateURL       string   `json:"-"`
 }
 
 type logger func(format string, args ...any)
@@ -236,27 +239,31 @@ func provision(o ProvisionOpts, s Setup, log logger) error {
 				_ = do("restore "+p, "cmd", "package", "install-existing", p)
 			}
 		}
-		enabled, _ := a.sh("settings", "get", "secure", "enabled_accessibility_services")
-		enabled = strings.TrimSpace(enabled)
-		if !strings.Contains(enabled, homeButtonService) {
-			if enabled == "" || enabled == "null" {
-				enabled = homeButtonService
-			} else {
-				enabled += ":" + homeButtonService
-			}
-			_ = do("enable Home button service", "settings", "put", "secure", "enabled_accessibility_services", enabled)
+		if !o.DryRun {
+			log("  Home button service, app updates from the TV")
+			homeButtonOn(a)
+			allowSelfUpdate(a)
 		}
-		_ = do("enable accessibility", "settings", "put", "secure", "accessibility_enabled", "1")
-		_ = do("let Vanilla Home re-enable its Home button service", "pm", "grant", launcherPkg, "android.permission.WRITE_SECURE_SETTINGS")
 	}
 
 	log("==> Sending your settings to the box")
 	raw, _ := json.Marshal(cfg)
 	b64 := base64.StdEncoding.EncodeToString(raw)
 	live := cfg["livetv"].(map[string]any)
-	resetDock := "true"
-	if o.ConfigOnly {
-		resetDock = "false"
+	// A TV's own look, layout and dock stay unless asked to reset them (or it's a new box). A reset or
+	// new box gets the saved Home template when there is one, else the wizard's defaults.
+	keepHome := info.Launcher && !o.ResetHome
+	launcherArgs := []string{"am", "start", "-n", launcherPkg + "/.MainActivity",
+		"--es", "config_url", s.RemoteConfigURL, "--es", "config_b64", b64,
+		"--ez", "keep_home", strconv.FormatBool(keepHome), "--ez", "reset_dock", strconv.FormatBool(!keepHome)}
+	if o.UpdateURL != "" {
+		launcherArgs = append(launcherArgs, "--es", "update_url", o.UpdateURL)
+	}
+	if t := loadTemplate(); t != nil && !keepHome {
+		log("  using the Home saved from %s", t.From)
+		launcherArgs = append(launcherArgs, homeIntentArgs(t)...)
+	} else if keepHome {
+		log("  keeping this TV's own Home (theme, layout, dock)")
 	}
 	if err := do("configure Live TV", "am", "start", "-n", livetvPkg+"/.MainActivity",
 		"--es", "config_url", s.RemoteConfigURL, "--es", "m3u_url", live["m3u_url"].(string),
@@ -266,8 +273,7 @@ func provision(o ProvisionOpts, s Setup, log logger) error {
 	if !o.DryRun {
 		time.Sleep(3 * time.Second)
 	}
-	if err := do("configure launcher", "am", "start", "-n", launcherPkg+"/.MainActivity",
-		"--es", "config_url", s.RemoteConfigURL, "--es", "config_b64", b64, "--ez", "reset_dock", resetDock); err != nil {
+	if err := do("configure launcher", launcherArgs...); err != nil {
 		return err
 	}
 

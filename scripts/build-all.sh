@@ -11,6 +11,7 @@ cp livetv/build/outputs/apk/release/livetv-release.apk dist/vanilla-livetv.apk
 cp dist/vanilla-*.apk setup/apks/
 VERSION="${VERSION:-dev}"
 cd setup
+go run . -apk-versions > ../dist/version.json
 for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
   os="${target%/*}"; arch="${target#*/}"; ext=""; [[ $os == windows ]] && ext=".exe"
   out="../dist/onn-vanilla-setup-${os}-${arch}${ext}"

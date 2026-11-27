@@ -326,7 +326,10 @@ class MainActivity : ComponentActivity() {
                 mark("cached guide ${Repo.epg.size}")
             }
             launch { games.value = withContext(Dispatchers.IO) { fetchGames(c.leagues) } }
-            val stale = force || cached.isEmpty() || Repo.playlistAgeMs(this@MainActivity) > 3_600_000L
+            // A lineup saved by an older version of the app is refreshed right away.
+            val updatedAgo = System.currentTimeMillis() - runCatching { packageManager.getPackageInfo(packageName, 0).lastUpdateTime }.getOrDefault(0L)
+            val age = Repo.playlistAgeMs(this@MainActivity)
+            val stale = force || cached.isEmpty() || age > 3_600_000L || age > updatedAgo
             val list = if (!stale) null else withContext(Dispatchers.IO) { runCatching { Repo.loadPlaylist(this@MainActivity, feeds) }.getOrNull() }
             if (list == null && cached.isEmpty()) {
                 status.value = "Can't reach ${feeds.joinToString(" or ") { it.name }}"

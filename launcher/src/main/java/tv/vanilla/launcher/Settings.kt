@@ -114,6 +114,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.layoutSection(a: Main
         }
     }
     item { SetRow("Reset layout", "Go back to the setup app's layout", theme) { a.resetLayout() } }
+    val peers = a.rooms.peers.value
+    heading("Copy from another TV", if (peers.isEmpty()) "Other Vanilla TVs show up here when they're on." else "Takes that TV's theme, layout and dock.")
+    peers.forEach { p -> item("copy-${p.service}") { SetRow("Copy from ${p.name}", "Replaces this TV's Home", theme) { a.copyHomeFrom(p) } } }
 }
 
 private fun androidx.compose.foundation.lazy.LazyListScope.widgetsSection(a: MainActivity, theme: VanillaTheme) {
@@ -164,6 +167,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.systemSection(a: Main
         SetRow("Home button", if (released) "Opens $stockName" else "Opens Vanilla Home", theme) { released = !released; HomeButtonService.setReleased(a, released) }
     }
     item { SetRow("Config link", "Where this box gets its settings", theme) { onClose(); onAdvanced() } }
+    heading("Updates")
+    item {
+        val ver = { pkg: String -> Updates.installed(a, pkg)?.second ?: "not installed" }
+        SetRow("Versions", "Home ${ver("tv.vanilla.launcher")} · Live TV ${ver("tv.vanilla.live")}", theme) {}
+    }
+    item { SetRow("Check for updates", a.updateStatus.value.ifBlank { "Get the newest Vanilla Home and Live TV" }, theme) { a.updateNow() } }
 }
 
 @Composable

@@ -90,6 +90,7 @@ class Rooms private constructor(private val ctx: Context) {
                             val p = readPlaying(ctx)
                             JSONObject().put("name", myName).put("playing", p?.optString("name") ?: "").put("logo", p?.optString("logo") ?: "").toString()
                         }
+                        path.startsWith("/home") -> homeSnapshot(ctx).toString()
                         path.startsWith("/tune?") -> {
                             val q = path.substringAfter('?').split('&').associate { kv -> kv.substringBefore('=') to URLDecoder.decode(kv.substringAfter('=', ""), "UTF-8") }
                             val ch = q["ch"].orEmpty()

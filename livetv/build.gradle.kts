@@ -1,3 +1,5 @@
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Properties
 
 plugins {
@@ -19,8 +21,8 @@ android {
         applicationId = "tv.vanilla.live"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = ((System.currentTimeMillis() / 1000 - 1767225600) / 60).toInt()
+        versionName = SimpleDateFormat("yyyy.MM.dd.HHmm").format(Date())
     }
 
     signingConfigs {

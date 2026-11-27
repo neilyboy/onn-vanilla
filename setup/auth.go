@@ -298,7 +298,7 @@ func (a *auth) protect(next http.Handler) http.Handler {
 			return
 		}
 		p := r.URL.Path
-		if p == "/login" || p == "/login.html" || p == "/style.css" || strings.HasPrefix(p, "/api/auth") || a.signedIn(r) {
+		if p == "/login" || p == "/login.html" || p == "/style.css" || strings.HasPrefix(p, "/api/auth") || strings.HasPrefix(p, "/updates/") || a.signedIn(r) {
 			if p == "/login" {
 				r.URL.Path = "/login.html"
 			}

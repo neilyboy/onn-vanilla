@@ -116,6 +116,60 @@ class MainActivity : ComponentActivity() {
         homePrefs.edit().remove("cells").remove("slots").apply()
     }
 
+    /** Takes on a Home from the setup app or another TV (see [homeSnapshot]). */
+    fun applyHome(j: org.json.JSONObject): Boolean {
+        if (!applyHomeSnapshot(this, j)) return false
+        loadHome()
+        iconOverride.value = homePrefs.getString("icon_style", null)
+        dock.value = configRepo.localDock
+        config.value?.let { c -> ha.value = haShown(c, haAll.value, haSet("ha_hidden"), haSet("ha_added")); lifecycleScope.launch { refreshFeeds(c) } }
+        if (look.value.theme == "wallpaper") lifecycleScope.launch { updateWallColor() }
+        return true
+    }
+
+    fun copyHomeFrom(p: Peer) {
+        lifecycleScope.launch {
+            val j = withContext(Dispatchers.IO) { runCatching { org.json.JSONObject(httpGet("http://${p.host}:${p.port}/home", 5000)) }.getOrNull() }
+            val ok = j != null && applyHome(j)
+            Toast.makeText(this@MainActivity, if (ok) "Copied Home from ${p.name}" else "Couldn't copy from ${p.name}. Update its apps first.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** Status line for Settings → System → Updates. */
+    val updateStatus = mutableStateOf("")
+    private var updateFound: Updates.Found? = null
+
+    /** Checks for app updates, or installs them when an update was already found. */
+    fun updateNow() {
+        val found = updateFound
+        lifecycleScope.launch {
+            if (found != null && found.newer.isNotEmpty()) {
+                updateStatus.value = "Downloading…"
+                val err = withContext(Dispatchers.IO) { runCatching { found.newer.forEach { Updates.install(this@MainActivity, found.base, it) } }.exceptionOrNull() }
+                updateStatus.value = if (err == null) "Installing… press OK if the TV asks" else "Download failed: ${err.message}"
+                updateFound = null
+                return@launch
+            }
+            updateStatus.value = "Checking…"
+            val f = withContext(Dispatchers.IO) { Updates.check(this@MainActivity) }
+            updateFound = f
+            updateStatus.value = when {
+                f == null -> "Couldn't reach the update server"
+                f.newer.isEmpty() -> "Up to date"
+                else -> "Update available (${f.newer.joinToString { if (it == "tv.vanilla.live") "Live TV" else "Home" }}): press OK to install"
+            }
+        }
+    }
+
+    private suspend fun updateLoop() {
+        delay(60_000L)
+        while (true) {
+            val f = withContext(Dispatchers.IO) { Updates.check(this@MainActivity) }
+            if (f != null && f.newer.isNotEmpty() && updateFound == null) { updateFound = f; updateStatus.value = "Update available: press OK to install" }
+            delay(12 * 60 * 60_000L)
+        }
+    }
+
     fun setLook(l: HomeLook) {
         look.value = l
         l.save(homePrefs)
@@ -262,6 +316,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch { glanceLoop() }
         lifecycleScope.launch { haLoop() }
         lifecycleScope.launch { roomsLoop() }
+        lifecycleScope.launch { updateLoop() }
     }
 
     override fun onDestroy() {
@@ -280,19 +335,26 @@ class MainActivity : ComponentActivity() {
     /** `adb shell am start -n tv.vanilla.launcher/.MainActivity --es config_url http://host:9192/config/launcher-config.json` */
     private fun applyIntent(intent: Intent?): Boolean {
         intent ?: return false
+        // keep_home: settings from the setup app leave this TV's own look, layout and dock alone.
+        val keepHome = intent.getBooleanExtra("keep_home", false)
+        intent.getStringExtra("update_url")?.let { Updates.setSource(this, it) }
         intent.getStringExtra("config_b64")?.let { b64 ->
             val text = runCatching { String(Base64.decode(b64, Base64.DEFAULT)) }.getOrNull()
             val before = config.value?.widgets?.map { it.id }?.toSet()
             text?.let { configRepo.applyInline(it) }?.let {
-                // Settings sent from the setup app replace the look picked earlier on the box; a TV-edited layout stays unless the widget list changed.
-                iconOverride.value = null
-                homePrefs.edit().remove("icon_style").apply()
-                setLook(look.value.copy(theme = null, accent = null, preset = null))
-                if (before != null && before != it.widgets.map { w -> w.id }.toSet()) resetLayout()
+                if (!keepHome) {
+                    iconOverride.value = null
+                    homePrefs.edit().remove("icon_style").apply()
+                    setLook(look.value.copy(theme = null, accent = null, preset = null))
+                    if (before != null && before != it.widgets.map { w -> w.id }.toSet()) resetLayout()
+                }
                 config.value = it
                 lifecycleScope.launch { reloadWallpapers(it); refreshWeather(it); refreshFeeds(it) }
             }
-            if (intent.getBooleanExtra("reset_dock", true)) setDock(null)
+            if (!keepHome && intent.getBooleanExtra("reset_dock", true)) setDock(null)
+        }
+        intent.getStringExtra("home_b64")?.let { b64 ->
+            runCatching { org.json.JSONObject(String(Base64.decode(b64, Base64.DEFAULT))) }.getOrNull()?.let { applyHome(it) }
         }
         val url = intent.getStringExtra("config_url") ?: return false
         configRepo.configUrl = url

@@ -38,7 +38,16 @@ func main() {
 	flag.StringVar(&apkDir, "apks", "", "folder with vanilla-launcher.apk / vanilla-livetv.apk (overrides the bundled ones)")
 	flag.StringVar(&dataDir, "data", os.Getenv("ONN_VANILLA_DATA"), "folder for settings, the password and adb (default: your config folder/onn-vanilla)")
 	resetPassword := flag.Bool("reset-password", false, "forget the wizard password; the next visit from your home network sets a new one")
+	apkVersions := flag.Bool("apk-versions", false, "print the bundled apps' versions as JSON (the version.json boxes check for updates) and exit")
 	flag.Parse()
+	if *apkVersions {
+		v, err := bundledVersions()
+		if err != nil {
+			log.Fatal(err)
+		}
+		_ = json.NewEncoder(os.Stdout).Encode(v)
+		return
+	}
 
 	if dataDir == "" {
 		base, err := os.UserConfigDir()
@@ -64,6 +73,7 @@ func main() {
 	web, _ := fs.Sub(webFS, "web")
 	mux.Handle("/", http.FileServer(http.FS(web)))
 	registerAPI(mux)
+	registerFleet(mux)
 
 	ln, err := net.Listen("tcp", fmt.Sprintf("%s:%d", *listen, *port))
 	if err != nil {

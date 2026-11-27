@@ -466,8 +466,14 @@ internal fun AddTile(theme: VanillaTheme, size: androidx.compose.ui.unit.Dp, mod
 
 @Composable
 internal fun DialogCard(content: @Composable ColumnScope.() -> Unit) {
+    // A menu opened by holding OK must not act on that same press when OK is let go.
+    var freshPress by remember { mutableStateOf(false) }
     Column(
-        Modifier.width(560.dp).clip(RoundedCornerShape(24.dp)).background(Color(0xF0181A20)).padding(28.dp),
+        Modifier.onPreviewKeyEvent { ev ->
+            if (ev.key != Key.DirectionCenter && ev.key != Key.Enter && ev.key != Key.NumPadEnter) false
+            else if (ev.type == KeyEventType.KeyDown && ev.nativeKeyEvent.repeatCount == 0) { freshPress = true; false }
+            else !freshPress
+        }.width(560.dp).clip(RoundedCornerShape(24.dp)).background(Color(0xF0181A20)).padding(28.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
         content = content,
     )

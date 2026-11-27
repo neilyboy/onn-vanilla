@@ -515,20 +515,40 @@ private fun GuideTab(a: MainActivity, c: LiveConfig?, accent: Color, favoritesOn
     }
     val groupNames = remember(chans, favs, profile, showAdult, favoritesOnly) {
         if (favoritesOnly) return@remember listOf("★ Favorites")
-        val all = chans.map { it.group }.distinct().filter { showAdult || !isAdultGroup(it) }
+        // Every "Locals — <state>" group from the Lineup Manager plugin collapses into one Locals National chip.
+        val all = chans.map { if (it.group.startsWith(LOCALS_PREFIX)) LOCALS_NATIONAL else it.group }.distinct().filter { showAdult || !isAdultGroup(it) }
         val preferred = profile.groups.filter { it in all }
         val sports = all.filter { g -> g !in preferred && sportsKeys.any { g.contains(it, true) } }
         val general = all - preferred.toSet() - sports.toSet()
-        buildList {
+        val list = buildList {
             if (favs.isNotEmpty()) add("★ Favorites")
             addAll(preferred)
             if (profile.sports) { addAll(sports); addAll(general) } else { addAll(general); addAll(sports) }
-        }
+        }.toMutableList()
+        if (LOCALS_NATIONAL in list && "Locals" in list) { list.remove(LOCALS_NATIONAL); list.add(list.indexOf("Locals") + 1, LOCALS_NATIONAL) }
+        list
     }
     var group by remember { mutableStateOf<String?>(null) }
     val selected = group ?: groupNames.firstOrNull()
-    val rows = remember(chans, selected, favs) {
-        if (selected == "★ Favorites") chans.filter { it.name in favs } else chans.filter { it.group == selected }
+    var locNet by remember { mutableStateOf<String?>(null) }
+    var locState by remember { mutableStateOf<String?>(null) }
+    val nationals = remember(chans) { chans.filter { it.group.startsWith(LOCALS_PREFIX) } }
+    val networks = remember(nationals) { nationals.mapNotNull { localNetwork(it.name) }.distinct().sortedBy { LOCAL_NETWORKS.indexOf(it) } }
+    val states = remember(nationals) { nationals.map { it.group.removePrefix(LOCALS_PREFIX) }.distinct().sorted() }
+    val rows = remember(chans, selected, favs, locNet, locState) {
+        when (selected) {
+            "★ Favorites" -> chans.filter { it.name in favs }
+            LOCALS_NATIONAL -> nationals.filter { (locNet == null || localNetwork(it.name) == locNet) && (locState == null || it.group.removePrefix(LOCALS_PREFIX) == locState) }
+            else -> chans.filter { it.group == selected }
+        }
+    }
+    // Highlighting a group chip loads its channels after a short pause, without pressing OK.
+    var hovered by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(hovered) { val h = hovered ?: return@LaunchedEffect; delay(400); group = h }
+    val nowFocus = remember { FocusRequester() }
+    // Down from the chips lands on what's on now in the first row, not wherever the cursor lines up.
+    val downToNow = Modifier.onPreviewKeyEvent { ev ->
+        if (ev.key == Key.DirectionDown && ev.type == KeyEventType.KeyDown && rows.isNotEmpty()) runCatching { nowFocus.requestFocus(); true }.getOrDefault(false) else false
     }
     var focusedProg by remember { mutableStateOf<Pair<Channel, Programme?>?>(null) }
     val gridState = rememberLazyListState()
@@ -541,12 +561,14 @@ private fun GuideTab(a: MainActivity, c: LiveConfig?, accent: Color, favoritesOn
         a.tabBack = h
         onDispose { if (a.tabBack === h) a.tabBack = null }
     }
-    val windowStart = remember { val n = System.currentTimeMillis(); n - n % (30 * 60_000L) }
+    fun halfHour() = System.currentTimeMillis().let { it - it % (30 * 60_000L) }
+    var windowStart by remember { mutableStateOf(halfHour()) }
+    LaunchedEffect(Unit) { while (true) { delay(30_000); windowStart = halfHour() } }
     val look = a.look.value
     val windowMs = look.guideHours * 3_600_000L
 
     Column(Modifier.fillMaxSize()) {
-        LazyRow(contentPadding = PaddingValues(horizontal = 48.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        LazyRow(modifier = if (selected == LOCALS_NATIONAL) Modifier else downToNow, contentPadding = PaddingValues(horizontal = 48.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             if (chans.size >= 2) item("mv") {
                 Surface(
                     onClick = { a.mvPicker.value = true },
@@ -559,7 +581,7 @@ private fun GuideTab(a: MainActivity, c: LiveConfig?, accent: Color, favoritesOn
                 val sel = g == selected
                 Surface(
                     onClick = { group = g },
-                    modifier = if (sel) Modifier.focusRequester(chipFocus) else Modifier,
+                    modifier = (if (sel) Modifier.focusRequester(chipFocus) else Modifier).onFocusChanged { if (it.isFocused) hovered = g },
                     shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
                     colors = ClickableSurfaceDefaults.colors(
                         containerColor = if (sel) accent.copy(alpha = 0.85f) else Palette.card,
@@ -569,6 +591,10 @@ private fun GuideTab(a: MainActivity, c: LiveConfig?, accent: Color, favoritesOn
                     scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
                 ) { Text(g, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), maxLines = 1) }
             }
+        }
+        if (selected == LOCALS_NATIONAL) {
+            SubChips(listOf<String?>(null) + networks, locNet, { it ?: "All networks" }, accent, Modifier) { locNet = it }
+            SubChips(listOf<String?>(null) + states, locState, { it ?: "All states" }, accent, downToNow) { locState = it }
         }
         // Detail strip for the focused programme
         Column(Modifier.fillMaxWidth().height(92.dp).padding(horizontal = 48.dp, vertical = 10.dp)) {
@@ -592,8 +618,8 @@ private fun GuideTab(a: MainActivity, c: LiveConfig?, accent: Color, favoritesOn
                     for (i in 0 until slots) Text(fmtTime(windowStart + i * 30 * 60_000L), color = Palette.sub, fontSize = 13.sp, modifier = Modifier.width(gridW / slots))
                 }
                 LazyColumn(state = gridState, contentPadding = PaddingValues(bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(rows, key = { it.index }) { ch ->
-                        GuideRow(a, ch, guide[ch.tvgId], windowStart, windowMs, chanW, dpPerMs, accent) { focusedProg = it }
+                    itemsIndexed(rows, key = { _, ch -> ch.index }) { i, ch ->
+                        GuideRow(a, ch, guide[ch.tvgId], windowStart, windowMs, chanW, dpPerMs, accent, if (i == 0) nowFocus else null) { focusedProg = it }
                     }
                 }
             }
@@ -603,11 +629,38 @@ private fun GuideTab(a: MainActivity, c: LiveConfig?, accent: Color, favoritesOn
     }
 }
 
+const val LOCALS_PREFIX = "Locals — "
+const val LOCALS_NATIONAL = "Locals National"
+private val LOCAL_NETWORKS = listOf("ABC", "CBS", "NBC", "FOX", "PBS", "CW", "My", "IND")
+private val LOCAL_NET_RE = Regex(""":\s*(ABC|CBS|NBC|FOX|PBS|CW|My|IND)\b""")
+/** Network of a Locals National channel, from names like "Peoria: CBS 31 WMBD". */
+fun localNetwork(name: String): String? = LOCAL_NET_RE.find(name)?.groupValues?.get(1)
+
+@Composable
+private fun <T> SubChips(values: List<T>, current: T, label: (T) -> String, accent: Color, modifier: Modifier, onPick: (T) -> Unit) {
+    LazyRow(modifier.padding(top = 8.dp), contentPadding = PaddingValues(horizontal = 48.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(values) { v ->
+            val sel = v == current
+            Surface(
+                onClick = { onPick(v) },
+                modifier = Modifier.onFocusChanged { if (it.isFocused) onPick(v) },
+                shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
+                colors = ClickableSurfaceDefaults.colors(
+                    containerColor = if (sel) accent.copy(alpha = 0.6f) else Palette.card, focusedContainerColor = Palette.text,
+                    contentColor = Palette.text, focusedContentColor = Palette.bg,
+                ),
+                scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
+            ) { Text(label(v), fontSize = 13.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), maxLines = 1) }
+        }
+    }
+}
+
 @Composable
 private fun GuideRow(
     a: MainActivity, ch: Channel, progs: List<Programme>?, windowStart: Long, windowMs: Long,
-    chanW: Dp, dpPerMs: Dp, accent: Color, onFocus: (Pair<Channel, Programme?>) -> Unit,
+    chanW: Dp, dpPerMs: Dp, accent: Color, nowFocus: FocusRequester? = null, onFocus: (Pair<Channel, Programme?>) -> Unit,
 ) {
+    val nowMod = if (nowFocus != null) Modifier.focusRequester(nowFocus) else Modifier
     val end = windowStart + windowMs
     val visible = progs.orEmpty().filter { it.stop > windowStart && it.start < end }
     Row(Modifier.height(a.look.value.rowHeightDp.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -621,9 +674,11 @@ private fun GuideRow(
         }
         Spacer(Modifier.width(8.dp))
         if (visible.isEmpty()) {
-            GuideCell(ch.name, "", dpPerMs * windowMs.toFloat(), false, accent, { a.play(ch) }, { a.toggleFavorite(ch) }) { onFocus(ch to null) }
+            GuideCell(ch.name, "", dpPerMs * windowMs.toFloat(), false, accent, { a.play(ch) }, { a.toggleFavorite(ch) }, nowMod) { onFocus(ch to null) }
         } else {
             var cursor = windowStart
+            val nowMs = System.currentTimeMillis()
+            val target = visible.firstOrNull { it.start <= nowMs && it.stop > nowMs } ?: visible.first()
             visible.forEach { p ->
                 val s = maxOf(p.start, windowStart)
                 if (s > cursor) Spacer(Modifier.width(dpPerMs * (s - cursor).toFloat()))
@@ -631,7 +686,7 @@ private fun GuideRow(
                 val now = System.currentTimeMillis()
                 GuideCell(
                     p.title, "${fmtTime(p.start)}", dpPerMs * (e - s).toFloat() - 4.dp, p.start <= now && p.stop > now, accent,
-                    { a.play(ch) }, { a.toggleFavorite(ch) },
+                    { a.play(ch) }, { a.toggleFavorite(ch) }, if (p === target) nowMod else Modifier,
                 ) { onFocus(ch to p) }
                 Spacer(Modifier.width(4.dp))
                 cursor = e
@@ -641,11 +696,11 @@ private fun GuideRow(
 }
 
 @Composable
-private fun GuideCell(title: String, sub: String, width: Dp, airing: Boolean, accent: Color, onClick: () -> Unit, onLong: () -> Unit, onFocus: () -> Unit) {
+private fun GuideCell(title: String, sub: String, width: Dp, airing: Boolean, accent: Color, onClick: () -> Unit, onLong: () -> Unit, modifier: Modifier = Modifier, onFocus: () -> Unit) {
     Surface(
         onClick = onClick,
         onLongClick = onLong,
-        modifier = Modifier.width(width.coerceAtLeast(8.dp)).fillMaxHeight().onFocusChanged { if (it.isFocused) onFocus() },
+        modifier = modifier.width(width.coerceAtLeast(8.dp)).fillMaxHeight().onFocusChanged { if (it.isFocused) onFocus() },
         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(10.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (airing) Color(0xFF232838) else Palette.card,

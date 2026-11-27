@@ -261,7 +261,7 @@ async function renderFleet() {
     renderTemplate(r.template);
     $$("#fleet-list [data-save]").forEach(a => a.onclick = async e => {
       e.preventDefault();
-      try { renderTemplate(await api("/api/home-template/save", { ip: a.dataset.save, name: a.dataset.name })); renderFleet(); }
+      try { renderTemplate(await api("/api/home-template/save", { ip: a.dataset.save, name: a.dataset.name, live: $("#tpl-live").checked })); renderFleet(); }
       catch (err) { alert(err.message); }
     });
     $$("#fleet-list [data-apply]").forEach(a => a.onclick = e => { e.preventDefault(); confirm("Replace this TV's theme, layout and dock with the saved Home?") && run("/api/home-template/apply", { ips: [a.dataset.apply] }); });

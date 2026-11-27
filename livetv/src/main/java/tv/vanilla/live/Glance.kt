@@ -3,6 +3,7 @@ package tv.vanilla.live
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.database.Cursor
+import android.os.Bundle
 import android.database.MatrixCursor
 import android.net.Uri
 import org.json.JSONArray
@@ -103,13 +104,64 @@ object Glance {
     }
 }
 
-/** Read-only: `content://tv.vanilla.live.glance/snapshot` returns one row with a `json` column. */
+/** Live TV's look and favorites, for copying a Home between TVs (see the launcher's homeSnapshot). */
+object SharedPrefs {
+    @Volatile var changed = false
+    private fun files(ctx: android.content.Context) = listOf("look" to { _: String -> true }, "live" to { k: String -> k.startsWith("fav:") })
+
+    fun export(ctx: android.content.Context): JSONObject = JSONObject().apply {
+        files(ctx).forEach { (name, keep) ->
+            val o = JSONObject()
+            ctx.getSharedPreferences(name, android.content.Context.MODE_PRIVATE).all.forEach { (k, v) ->
+                if (!keep(k) || v == null) return@forEach
+                val t = when (v) { is String -> "s"; is Boolean -> "b"; is Int -> "i"; is Long -> "l"; is Float -> "f"; is Set<*> -> "set"; else -> return@forEach }
+                o.put(k, JSONObject().put("t", t).put("v", if (v is Set<*>) JSONArray(v.map { it.toString() }) else v))
+            }
+            put(name, o)
+        }
+    }
+
+    fun import(ctx: android.content.Context, j: JSONObject) {
+        files(ctx).forEach { (name, keep) ->
+            val src = j.optJSONObject(name) ?: return@forEach
+            val p = ctx.getSharedPreferences(name, android.content.Context.MODE_PRIVATE)
+            val e = p.edit()
+            p.all.keys.filter(keep).forEach { e.remove(it) }
+            src.keys().forEach { k ->
+                val o = src.optJSONObject(k) ?: return@forEach
+                if (!keep(k)) return@forEach
+                when (o.optString("t")) {
+                    "s" -> e.putString(k, o.optString("v"))
+                    "b" -> e.putBoolean(k, o.optBoolean("v"))
+                    "i" -> e.putInt(k, o.optInt("v"))
+                    "l" -> e.putLong(k, o.optLong("v"))
+                    "f" -> e.putFloat(k, o.optDouble("v").toFloat())
+                    "set" -> e.putStringSet(k, o.optJSONArray("v")?.let { a -> (0 until a.length()).map { a.optString(it) }.toSet() } ?: emptySet())
+                }
+            }
+            e.apply()
+        }
+        changed = true
+    }
+}
+
+/**
+ * `content://tv.vanilla.live.glance/snapshot` (and `/playing`, `/prefs`) return one row with a `json` column.
+ * Vanilla Home can call `apply` with exported prefs to copy another TV's look and favorites.
+ */
 class GlanceProvider : ContentProvider() {
     override fun onCreate() = true
     override fun query(uri: Uri, projection: Array<out String>?, selection: String?, args: Array<out String>?, sort: String?): Cursor {
+        if (uri.lastPathSegment == "prefs") return MatrixCursor(arrayOf("json")).apply { addRow(arrayOf(context?.let { SharedPrefs.export(it).toString() } ?: "{}")) }
         val f = context?.let { if (uri.lastPathSegment == "playing") Glance.playingFile(it) else Glance.file(it) }
         val text = f?.let { runCatching { it.readText() }.getOrNull() } ?: "{}"
         return MatrixCursor(arrayOf("json")).apply { addRow(arrayOf(text)) }
+    }
+    override fun call(method: String, arg: String?, extras: Bundle?): Bundle? {
+        val ctx = context ?: return null
+        if (method != "apply" || callingPackage != "tv.vanilla.launcher" || arg == null) return null
+        runCatching { SharedPrefs.import(ctx, JSONObject(arg)) }
+        return Bundle()
     }
     override fun getType(uri: Uri) = "application/json"
     override fun insert(uri: Uri, values: ContentValues?): Uri? = null

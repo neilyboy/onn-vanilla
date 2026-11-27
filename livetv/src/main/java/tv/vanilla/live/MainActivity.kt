@@ -185,6 +185,11 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         if (::settings.isInitialized) recents.value = settings.recentsFor(profile.value.name)
+        if (SharedPrefs.changed && ::settings.isInitialized) {
+            SharedPrefs.changed = false
+            favorites.value = settings.favoritesFor(profile.value.name)
+            Look.load(this)?.let { look.value = it; Palette.apply(it) }
+        }
         resume.value = ResumeStore.all(this, profile.value.name)
     }
 

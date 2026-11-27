@@ -298,12 +298,22 @@ func registerFleet(mux *http.ServeMux) {
 		})
 	})
 	mux.HandleFunc("POST /api/home-template/save", func(w http.ResponseWriter, r *http.Request) {
-		var b struct{ IP, Name string }
+		var b struct {
+			IP, Name string
+			Live     bool
+		}
 		_ = json.NewDecoder(r.Body).Decode(&b)
 		home, err := fetchHome(b.IP)
 		if err != nil {
 			writeErr(w, err)
 			return
+		}
+		if !b.Live {
+			var m map[string]json.RawMessage
+			if json.Unmarshal(home, &m) == nil {
+				delete(m, "livetv")
+				home, _ = json.Marshal(m)
+			}
 		}
 		t := homeTemplate{From: b.Name, SavedAt: time.Now(), Home: home}
 		if t.From == "" {

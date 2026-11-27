@@ -117,8 +117,8 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Takes on a Home from the setup app or another TV (see [homeSnapshot]). */
-    fun applyHome(j: org.json.JSONObject): Boolean {
-        if (!applyHomeSnapshot(this, j)) return false
+    fun applyHome(j: org.json.JSONObject, includeLive: Boolean = true): Boolean {
+        if (!applyHomeSnapshot(this, j, includeLive)) return false
         loadHome()
         iconOverride.value = homePrefs.getString("icon_style", null)
         dock.value = configRepo.localDock
@@ -130,10 +130,14 @@ class MainActivity : ComponentActivity() {
     fun copyHomeFrom(p: Peer) {
         lifecycleScope.launch {
             val j = withContext(Dispatchers.IO) { runCatching { org.json.JSONObject(httpGet("http://${p.host}:${p.port}/home", 5000)) }.getOrNull() }
-            val ok = j != null && applyHome(j)
+            val ok = j != null && applyHome(j, copyLive.value)
             Toast.makeText(this@MainActivity, if (ok) "Copied Home from ${p.name}" else "Couldn't copy from ${p.name}. Update its apps first.", Toast.LENGTH_LONG).show()
         }
     }
+
+    /** Whether Copy from another TV also takes its Live TV favorites and look. */
+    val copyLive by lazy { mutableStateOf(getSharedPreferences("launcher", MODE_PRIVATE).getBoolean("copy_live", true)) }
+    fun setCopyLive(on: Boolean) { copyLive.value = on; getSharedPreferences("launcher", MODE_PRIVATE).edit().putBoolean("copy_live", on).apply() }
 
     /** Status line for Settings → System → Updates. */
     val updateStatus = mutableStateOf("")

@@ -26,12 +26,21 @@ fun homeSnapshot(ctx: Context): JSONObject {
         prefs.put(k, JSONObject().put("t", t).put("v", if (v is Set<*>) JSONArray(v.map { it.toString() }) else v))
     }
     val dock = runCatching { JSONArray(File(ctx.filesDir, "dock.json").readText()) }.getOrNull()
-    return JSONObject().put("vanillaHome", 1).put("name", Rooms.get(ctx).myName).put("prefs", prefs).apply { if (dock != null) put("dock", dock) }
+    val live = runCatching {
+        ctx.contentResolver.query(android.net.Uri.parse("content://tv.vanilla.live.glance/prefs"), null, null, null, null)?.use { c -> if (c.moveToFirst()) JSONObject(c.getString(0)) else null }
+    }.getOrNull()?.takeIf { it.length() > 0 }
+    return JSONObject().put("vanillaHome", 1).put("name", Rooms.get(ctx).myName).put("prefs", prefs).apply {
+        if (dock != null) put("dock", dock)
+        if (live != null) put("livetv", live)
+    }
 }
 
 /** Replaces this TV's Home with [j] from [homeSnapshot]. The caller reloads what's on screen. */
-fun applyHomeSnapshot(ctx: Context, j: JSONObject): Boolean {
+fun applyHomeSnapshot(ctx: Context, j: JSONObject, includeLive: Boolean = true): Boolean {
     if (j.optInt("vanillaHome") != 1) return false
+    if (includeLive) j.optJSONObject("livetv")?.let { live ->
+        runCatching { ctx.contentResolver.call(android.net.Uri.parse("content://tv.vanilla.live.glance"), "apply", live.toString(), null) }
+    }
     val p = ctx.getSharedPreferences(HOME_PREFS, Context.MODE_PRIVATE)
     val e = p.edit()
     p.all.keys.filter { it !in NOT_SHARED }.forEach { e.remove(it) }

@@ -116,6 +116,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.layoutSection(a: Main
     item { SetRow("Reset layout", "Go back to the setup app's layout", theme) { a.resetLayout() } }
     val peers = a.rooms.peers.value
     heading("Copy from another TV", if (peers.isEmpty()) "Other Vanilla TVs show up here when they're on." else "Takes that TV's theme, layout and dock.")
+    if (peers.isNotEmpty()) item { SetRow("Include Live TV favorites and look", if (a.copyLive.value) "On" else "Off", theme) { a.setCopyLive(!a.copyLive.value) } }
     peers.forEach { p -> item("copy-${p.service}") { SetRow("Copy from ${p.name}", "Replaces this TV's Home", theme) { a.copyHomeFrom(p) } } }
 }
 

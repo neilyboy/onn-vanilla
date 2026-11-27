@@ -185,6 +185,8 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         if (::settings.isInitialized) recents.value = settings.recentsFor(profile.value.name)
+        // Downloads fail while the TV sleeps; coming back with a missing or old guide fetches it again.
+        if (resumed && channels.value.isNotEmpty() && (Repo.epg.size < channels.value.size / 10 || Repo.epgAgeMs(this) > 2 * 3_600_000L || Repo.playlistAgeMs(this) > 3_600_000L)) reload()
         if (SharedPrefs.changed && ::settings.isInitialized) {
             SharedPrefs.changed = false
             favorites.value = settings.favoritesFor(profile.value.name)
@@ -347,7 +349,7 @@ class MainActivity : ComponentActivity() {
             }
             val chans = channels.value
             val epgUrls = feeds.map { it.epg }
-            if (force || Repo.epg.isEmpty() || Repo.epgAgeMs(this@MainActivity) > 2 * 3_600_000L || (list != null && list.size != cached.size)) {
+            if (force || Repo.epg.size < chans.size / 10 || Repo.epgAgeMs(this@MainActivity) > 2 * 3_600_000L || (list != null && list.size != cached.size)) {
                 withContext(Dispatchers.IO) { Repo.loadEpg(this@MainActivity, epgUrls, chans) }
                 epg.value = Repo.epg
                 writeGlance()

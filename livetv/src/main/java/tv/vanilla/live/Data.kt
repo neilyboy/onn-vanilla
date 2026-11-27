@@ -169,10 +169,12 @@ fun httpGet(url: String, timeoutMs: Int = 10000): String {
 }
 
 
-fun parseM3u(text: String): List<Channel> {
+fun parseM3u(text: String): List<Channel> = parseM3u(text.lineSequence())
+
+fun parseM3u(lines: Sequence<String>): List<Channel> {
     val out = ArrayList<Channel>()
     var pending: String? = null
-    for (raw in text.lineSequence()) {
+    for (raw in lines) {
         val line = raw.trim()
         when {
             line.startsWith("#EXTINF") -> pending = line
@@ -514,7 +516,10 @@ object Repo {
     fun loadPlaylist(ctx: Context, feeds: List<Feed>): List<Channel> {
         val mixed = feeds.size > 1
         val parts = feeds.map { f ->
-            runCatching { parseM3u(httpGet(f.m3u, 20000)) }.getOrNull()?.let { l ->
+            runCatching {
+                val (conn, s) = httpOpen(f.m3u, 20000)
+                try { s.bufferedReader().useLines { parseM3u(it) } } finally { conn.disconnect() }
+            }.getOrNull()?.let { l ->
                 if (mixed && f.prefix != null) l.map { it.copy(group = "${f.prefix} · ${it.group}") } else l
             }
         }
